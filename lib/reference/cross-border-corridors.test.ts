@@ -8,10 +8,14 @@ import { describe, expect, it } from "vitest";
 import {
   CORRIDORS,
   CORRIDOR_IDS,
+  CORRIDOR_SOURCE_ISSUERS,
   type Corridor,
   assertCorridorCoverage,
+  corridorLeadDays,
+  corridorLeadHints,
   getCorridor,
 } from "@/lib/reference/cross-border-corridors";
+import { CORRIDOR_MODES } from "@dim/contract/api";
 
 describe("corridor registry — 5-corridor hard bound (S8)", () => {
   it("contains exactly the 5 Fase 1 corridors", () => {
@@ -123,5 +127,59 @@ describe("corridor registry — 2026-09-30 corrections (viajes-fase-2)", () => {
         expect(envelope?.reviewBy, `${c.id}.${ruleType}`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       }
     }
+  });
+});
+
+describe("v14 additions — paper names, issuers, deadlines, modes (Viaje en pasos)", () => {
+  it("each destination names its own paper (QA 2026-10-07 copy 4)", () => {
+    expect(getCorridor("chile").paper.shortName).toBe("CZI");
+    expect(getCorridor("uruguay").paper.shortName).toBe("CVI Mercosur");
+    expect(getCorridor("brasil").paper.shortName).toBe("CVI Mercosur");
+    expect(getCorridor("ue_espana").paper.shortName).toBe("Certificado Sanitario UE");
+    expect(getCorridor("usa").paper.shortName).toBe("CVI");
+    for (const c of CORRIDORS) expect(c.paper.name.length, c.id).toBeGreaterThan(0);
+  });
+
+  it("every source a corridor cites has a named issuer, never the destination's name", () => {
+    for (const c of CORRIDORS) {
+      const urls = [c.sourceUrl, ...Object.values(c.rules).map((e) => e?.sourceUrl ?? "")];
+      for (const url of urls) {
+        const issuer = CORRIDOR_SOURCE_ISSUERS[url];
+        expect(issuer, `${c.id} ${url}`).toBeTruthy();
+        expect(issuer, `${c.id} ${url}`).not.toBe(c.label);
+      }
+    }
+  });
+
+  it("Chile accepts a tattoo in place of the microchip; no other destination does", () => {
+    expect(CORRIDORS.filter((c) => c.acceptsTattoo).map((c) => c.id)).toEqual(["chile"]);
+  });
+
+  it("the date step's deadlines are the destination's rules, worded with its paper", () => {
+    expect(corridorLeadHints(getCorridor("chile"))).toEqual([
+      "La antirrábica tiene que tener al menos 21 días el día del viaje.",
+      "El antiparasitario va entre 5 y 30 días antes del CZI.",
+      "El CZI se emite dentro de los 10 días previos al viaje.",
+    ]);
+    expect(corridorLeadHints(getCorridor("usa"))).toEqual([
+      "El Certificado Libre de Miasis se emite dentro de los 5 días previos al embarque.",
+      "Perros: al menos 183 días de edad el día del viaje.",
+    ]);
+    expect(corridorLeadHints(getCorridor("ue_espana"))).toContain(
+      "El microchip tiene que estar implantado antes de la antirrábica.",
+    );
+  });
+
+  it("the longest declared wait drives the date step's warning", () => {
+    expect(corridorLeadDays(getCorridor("chile"))).toBe(21);
+    expect(corridorLeadDays(getCorridor("usa"))).toBeNull();
+  });
+
+  it("CORRIDOR_MODES covers exactly the five destinations, air first, and only air abroad of the region", () => {
+    expect(Object.keys(CORRIDOR_MODES).sort()).toEqual([...CORRIDOR_IDS].sort());
+    for (const id of CORRIDOR_IDS) expect(CORRIDOR_MODES[id][0], id).toBe("air");
+    expect(CORRIDOR_MODES.ue_espana).toEqual(["air"]);
+    expect(CORRIDOR_MODES.usa).toEqual(["air"]);
+    expect(CORRIDOR_MODES.uruguay).toContain("sea");
   });
 });

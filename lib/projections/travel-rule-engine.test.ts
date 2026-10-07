@@ -63,6 +63,7 @@ function corridor(
     lastVerifiedAt: "2026-09-30",
     reviewBy: "2027-03-29",
     appliesTo: { species: ["dog", "cat"], direction: "outbound_from_ar" },
+    paper: { name: "Certificado Veterinario Internacional (CVI)", shortName: "CVI" },
     rules: rules as CorridorRules,
   };
 }
@@ -76,6 +77,7 @@ function airline(modalities: Airline["modalities"], name = "Aerolínea Test"): A
     sourceUrl: "https://example.com/mascotas",
     lastVerifiedAt: "2026-09-30",
     reviewBy: "2026-12-29",
+    servesCorridors: [],
     modalities,
   };
 }

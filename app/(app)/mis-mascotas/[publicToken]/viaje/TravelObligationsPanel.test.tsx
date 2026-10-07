@@ -86,6 +86,7 @@ describe("<TravelObligationsPanel>", () => {
           kind: "corridor",
           id: "chile",
           label: "Chile",
+          issuerLabel: "SENASA, requisitos para Chile",
           sourceUrl: "https://www.sag.gob.cl",
           lastVerifiedAt: "2026-09-30",
           reviewBy: "2027-03-29",

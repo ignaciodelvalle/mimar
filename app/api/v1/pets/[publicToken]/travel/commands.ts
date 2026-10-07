@@ -28,8 +28,8 @@ import { cancelTrip } from "@/src/modules/pets/application/travel/cancel-trip";
 import { confirmTripDocument } from "@/src/modules/pets/application/travel/confirm-trip-document";
 import { recordCvi } from "@/src/modules/pets/application/travel/record-cvi";
 import { recordTrip } from "@/src/modules/pets/application/travel/record-trip";
-import type { TravelActor, TravelRefusalCode } from "@/src/modules/pets/application/travel/types";
-import type { PetTravelCommandAckV1 } from "@dim/contract/api";
+import type { TravelActor, TravelRefusal } from "@/src/modules/pets/application/travel/types";
+import type { PetTravelCommandAckV1, PetTravelInputInvalidV1 } from "@dim/contract/api";
 import type { PetTravelCommandInput } from "@dim/contract/input";
 
 /**
@@ -105,7 +105,7 @@ export async function runPetTravelCommand(ctx: TravelCommandContext) {
           },
           clientIdempotencyKey: ctx.idempotencyKey,
         });
-        if (!result.ok) return refusal(result.code, ctx.userId);
+        if (!result.ok) return refusal(result, ctx.userId);
         const body: PetTravelCommandAckV1 = {
           command: "record_trip",
           eventId: result.eventId,
@@ -124,7 +124,7 @@ export async function runPetTravelCommand(ctx: TravelCommandContext) {
           },
           clientIdempotencyKey: ctx.idempotencyKey,
         });
-        if (!result.ok) return refusal(result.code, ctx.userId);
+        if (!result.ok) return refusal(result, ctx.userId);
         const body: PetTravelCommandAckV1 = {
           command: "record_cvi",
           eventId: result.eventId,
@@ -139,7 +139,7 @@ export async function runPetTravelCommand(ctx: TravelCommandContext) {
           tripEventId: input.tripEventId,
           clientIdempotencyKey: ctx.idempotencyKey,
         });
-        if (!result.ok) return refusal(result.code, ctx.userId);
+        if (!result.ok) return refusal(result, ctx.userId);
         const body: PetTravelCommandAckV1 = {
           command: "cancel_trip",
           tripEventId: result.tripEventId,
@@ -156,7 +156,7 @@ export async function runPetTravelCommand(ctx: TravelCommandContext) {
           confirmed: input.confirmed,
           clientIdempotencyKey: ctx.idempotencyKey,
         });
-        if (!result.ok) return refusal(result.code, ctx.userId);
+        if (!result.ok) return refusal(result, ctx.userId);
         const body: PetTravelCommandAckV1 = {
           command: "confirm_trip_document",
           tripEventId: result.tripEventId,
@@ -180,14 +180,20 @@ export async function runPetTravelCommand(ctx: TravelCommandContext) {
  * es-AR sentence is NOT echoed: this surface answers with a code and nothing
  * else.
  */
-function refusal(code: TravelRefusalCode, userId: string) {
+function refusal(refused: Pick<TravelRefusal, "code" | "reason">, userId: string) {
+  const { code } = refused;
   switch (code) {
     case "forbidden":
       return apiV1Error("travel_forbidden", 403);
     case "pet_deceased":
       return apiV1Error("travel_not_allowed", 409);
-    case "input_invalid":
-      return apiV1Error("travel_input_invalid", 400);
+    case "input_invalid": {
+      // v14: WHICH input, beside the code a v13 app already maps to a sentence.
+      const body: PetTravelInputInvalidV1 = refused.reason
+        ? { error: "travel_input_invalid", reason: refused.reason }
+        : { error: "travel_input_invalid" };
+      return apiV1Json(body, { status: 400 });
+    }
     case "trip_duplicate":
       return apiV1Error("trip_duplicate", 409);
     case "cvi_duplicate":

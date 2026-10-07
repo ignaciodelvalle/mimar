@@ -14,7 +14,58 @@
 // pendientes detectados" for green), and `disclaimers` travel with every
 // reading. A client shows both; it does not write its own.
 
+//
+// THE v14 REDESIGN ADDS, NEVER CHANGES (2026-10-07, "Viaje en pasos"). Every
+// field below marked "v14" is OPTIONAL on the wire: a v13 app reading a v14
+// server ignores it, and a v14 app reading a v13 server finds it absent and
+// falls back to what v13 showed (all 20 airlines, every mode, every modality).
+// That is why `payloadVersion` stays at 1.
+
+import type { TravelCorridorId } from "../input/pet-travel.ts";
+
 export const PET_TRAVEL_PAYLOAD_VERSION = 1;
+
+/** How a trip goes. The wire value `land` is "En auto o en micro". */
+export type PetTravelModeV1 = "air" | "land" | "sea";
+
+/** Where the animal flies. */
+export type PetTravelModalityV1 = "cabin" | "hold" | "cargo";
+
+/**
+ * v14 — the modes each destination offers, in the order the form lists them.
+ * A SUGGESTION for the form, not a rule the server enforces: a v13 client may
+ * still record any mode, and the server accepts it. When a destination offers
+ * one mode only, the form skips the question.
+ */
+export const CORRIDOR_MODES: Record<TravelCorridorId, readonly PetTravelModeV1[]> = {
+  chile: ["air", "land"],
+  uruguay: ["air", "sea", "land"],
+  brasil: ["air", "land"],
+  ue_espana: ["air"],
+  usa: ["air"],
+};
+
+/** v14 — the es-AR words of each mode, as the form and the trip header say them. */
+export const PET_TRAVEL_MODE_LABELS: Record<PetTravelModeV1, string> = {
+  air: "En avión",
+  land: "En auto o en micro",
+  sea: "En barco",
+};
+
+/** v14 — the es-AR words of each modality, as the form and the trip header say them. */
+export const PET_TRAVEL_MODALITY_LABELS: Record<PetTravelModalityV1, string> = {
+  cabin: "En cabina",
+  hold: "En bodega",
+  cargo: "Como carga",
+};
+
+/**
+ * v14 — the seal a requirement carries when the libreta meets it ONLY on the
+ * owner's word (`evidence: "declared"`). PO 2026-10-07: for travel, only what a
+ * matriculated vet or an institution recorded counts as verified; the owner's
+ * own entry, and an organisation without matrícula, are declared.
+ */
+export const PET_TRAVEL_DECLARED_SEAL = "Declarado por vos · falta que lo registre tu veterinaria";
 
 /**
  * How long a client may present a cached copy as current.
@@ -99,7 +150,27 @@ export type PetTravelSourceV1 = {
   lastVerifiedAt: string;
   /** Neither `expired` nor `unverified` ever reads as settled. */
   freshness: "fresh" | "expired" | "unverified";
+  /**
+   * v14 — who PUBLISHES the rule, for the "Fuente:" line: "SENASA, requisitos
+   * para Chile", "Reglamento de Ejecución (UE) 2026/636", "LATAM, política de
+   * mascotas". `label` stays the corridor or airline the rule belongs to.
+   * Absent on a v13 server: fall back to `label`.
+   */
+  issuerLabel?: string;
 };
+
+/**
+ * v14 — what backs a requirement the libreta answers:
+ *   · `verified` — met by entries a matriculated vet or an institution recorded;
+ *   · `declared` — it WOULD be met, but only on the owner's own entries (or an
+ *                  organisation's without matrícula). Never counted as met: the
+ *                  requirement stays at `warning` ("Atención") and shows
+ *                  PET_TRAVEL_DECLARED_SEAL;
+ *   · `none`     — not met, or nothing on record.
+ * Null on obligations the libreta does not answer (destination rules, papers,
+ * airline policy). Absent on a v13 server.
+ */
+export type PetTravelEvidenceV1 = "verified" | "declared" | "none";
 
 export type PetTravelObligationV1 = {
   id: string;
@@ -121,6 +192,143 @@ export type PetTravelObligationV1 = {
    * than the client still parses.
    */
   documents?: PetTravelDocumentV1[] | null;
+  /** v14 — see PetTravelEvidenceV1. */
+  evidence?: PetTravelEvidenceV1 | null;
+};
+
+/**
+ * v14 — the one-tap action a requirement offers, by what resolves it:
+ *   · `record_paper`   — the destination's paper: "Cargar el CZI" (the CVI form);
+ *   · `ask_vet`        — the vet records it (a dose, a chip, a titre):
+ *                        "Pedírselo a mi veterinaria", the share sheet with the
+ *                        trip PDF;
+ *   · `send_to_vet`    — the same share, when the owner already declared it
+ *                        (`evidence: "declared"`): "Mandar a mi veterinaria";
+ *   · `record_weight`  — the owner may record a weight;
+ *   · `confirm_papers` — the papers-to-carry checklist ("Para llevar").
+ */
+export type PetTravelActionKindV1 =
+  | "record_paper"
+  | "ask_vet"
+  | "send_to_vet"
+  | "record_weight"
+  | "confirm_papers";
+
+/**
+ * v14 — rule type → action. The KEY is the rule type, which is the obligation
+ * `id` up to its first ":" (`document_issuance_window_days:senasa_cvi`). A rule
+ * type absent here offers no action (an airline policy, a destination permit):
+ * its "Ver detalle" says who decides.
+ */
+export const PET_TRAVEL_RULE_ACTIONS: Readonly<Record<string, PetTravelActionKindV1>> = {
+  document_issuance_window_days: "record_paper",
+  rabies_vaccination_to_travel_wait_days: "ask_vet",
+  rabies_vaccination_min_age_days: "ask_vet",
+  rabies_vaccination_max_days_before_travel: "ask_vet",
+  required_vaccines: "ask_vet",
+  parasite_treatment_window_days: "ask_vet",
+  parasite_treatment_min_days_before: "ask_vet",
+  microchip_required: "ask_vet",
+  microchip_before_vaccination_required: "ask_vet",
+  rabies_titer_test_required: "ask_vet",
+  rabies_titer_test_wait_days: "ask_vet",
+  max_weight_kg: "record_weight",
+  required_documents: "confirm_papers",
+};
+
+/** v14 — the button words of each action. `record_paper` names the paper. */
+export const PET_TRAVEL_ACTION_LABELS: Record<
+  Exclude<PetTravelActionKindV1, "record_paper">,
+  string
+> = {
+  ask_vet: "Pedírselo a mi veterinaria",
+  send_to_vet: "Mandar a mi veterinaria",
+  record_weight: "Anotar el peso",
+  confirm_papers: "Ver los papeles",
+};
+
+/** v14 — "Cargar el CZI": the record_paper button, from the corridor's paper. */
+export function petTravelRecordPaperLabel(paperShortName: string): string {
+  return `Cargar el ${paperShortName}`;
+}
+
+/** v14 — the rule type an obligation id is about (its id up to the first ":"). */
+export function petTravelRuleTypeOf(obligationId: string): string {
+  const colon = obligationId.indexOf(":");
+  return colon === -1 ? obligationId : obligationId.slice(0, colon);
+}
+
+/**
+ * v14 — the action an obligation offers, or null. A requirement met only on
+ * the owner's word asks the vet to record it (`send_to_vet`); one already met
+ * offers nothing.
+ */
+export function petTravelObligationAction(obligation: {
+  id: string;
+  requirementLevel: "blocker" | "warning" | "info";
+  evidence?: PetTravelEvidenceV1 | null;
+}): PetTravelActionKindV1 | null {
+  if (obligation.requirementLevel === "info") return null;
+  const kind = PET_TRAVEL_RULE_ACTIONS[petTravelRuleTypeOf(obligation.id)] ?? null;
+  if (kind === "ask_vet" && obligation.evidence === "declared") return "send_to_vet";
+  return kind;
+}
+
+/** v14 — the paper a destination asks for, named the way that destination names it. */
+export type PetTravelPaperV1 = {
+  /** "Certificado Zoosanitario de Importación (CZI)". */
+  name: string;
+  /** "CZI" — for "Cargar el CZI" and the papers line. */
+  shortName: string;
+};
+
+/** v14 — one destination the form offers. */
+export type PetTravelCorridorOptionV1 = {
+  id: string;
+  label: string;
+  /** v14 — the paper this destination asks for. */
+  paper?: PetTravelPaperV1;
+  /**
+   * v14 — the destination's deadlines as sentences, for the date step ("La
+   * antirrábica tiene que tener al menos 21 días el día del viaje."). Built by
+   * the SERVER from the corridor's rules and nothing about the animal: they are
+   * the rules, never a verdict.
+   */
+  leadHints?: string[];
+  /**
+   * v14 — the longest wait the destination declares, in days (21 for the
+   * antirrábica). A departure closer than this to today switches the date
+   * step's box to its warning tone. Null when it declares no wait.
+   */
+  leadDays?: number | null;
+};
+
+/** v14 — one modality an airline publishes, for the "¿Dónde viaja?" step. */
+export type PetTravelAirlineModalityV1 = {
+  modality: PetTravelModalityV1;
+  /** `restricted`: offered with conditions (only some routes, some passengers). */
+  offered: "yes" | "restricted";
+  /** What the airline publishes as its weight limit, when it publishes one. */
+  maxWeightKg: number | null;
+  /** True when that limit counts the bag or crate. */
+  includesCarrier: boolean;
+};
+
+/** One airline the form offers. */
+export type PetTravelAirlineOptionV1 = {
+  id: string;
+  name: string;
+  /**
+   * v14 — the destinations miMAR lists this airline FIRST for. A suggested
+   * order maintained by miMAR (PO 2026-10-07), never a rule: every airline
+   * stays reachable through "Buscar otra aerolínea".
+   */
+  corridors?: string[];
+  /**
+   * v14 — the modalities this airline publishes as offered (anything but
+   * "no"), in cabin → hold → cargo order. Empty when it publishes none.
+   */
+  modalities?: PetTravelAirlineModalityV1[];
 };
 
 /** One paper the trip asks for, and whether the owner said they have it. */
@@ -163,8 +371,8 @@ export type PetTravelV1 = {
   disclaimers: string[];
   /** What the record-trip form offers. */
   options: {
-    corridors: { id: string; label: string }[];
-    airlines: { id: string; name: string }[];
+    corridors: PetTravelCorridorOptionV1[];
+    airlines: PetTravelAirlineOptionV1[];
   };
   capabilities: {
     /** False for a deceased animal: the writers refuse it. */
@@ -188,6 +396,56 @@ export type PetTravelCommandAckV1 =
   | { command: "record_cvi"; eventId: string; replayed: boolean }
   | { command: "cancel_trip"; tripEventId: string; changed: boolean }
   | { command: "confirm_trip_document"; tripEventId: string; changed: boolean };
+
+/**
+ * v14 — WHICH input the server refused, beside `travel_input_invalid`.
+ *
+ * The code stays `travel_input_invalid` (a v13 app keeps its one sentence);
+ * the body gains `reason`, so a v14 app can say the one thing that is wrong
+ * instead of three causes at once (QA 2026-10-07, copy 1). The sentences live
+ * in PET_TRAVEL_REFUSAL_MESSAGES, which the web's Server Actions answer with
+ * too — the two surfaces cannot word the same refusal twice.
+ */
+export const PET_TRAVEL_REFUSAL_REASONS = [
+  "TRAVEL_DATE_INVALID",
+  "TRAVEL_DATE_OUT_OF_RANGE",
+  "AIRLINE_UNKNOWN",
+  "AIRLINE_NOT_AIR",
+  "MODALITY_NOT_AIR",
+  "CVI_NUMBER_REQUIRED",
+  "ISSUED_DATE_INVALID",
+  "ISSUED_DATE_FUTURE",
+  "ISSUED_DATE_TOO_OLD",
+  "VALID_UNTIL_INVALID",
+  "VALID_UNTIL_BEFORE_ISSUED",
+  "VALID_UNTIL_TOO_FAR",
+  "DOCUMENT_NOT_LISTED",
+] as const;
+export type PetTravelRefusalReasonV1 = (typeof PET_TRAVEL_REFUSAL_REASONS)[number];
+
+/** v14 — the es-AR sentence of each refusal reason, on the web and on the phone. */
+export const PET_TRAVEL_REFUSAL_MESSAGES: Record<PetTravelRefusalReasonV1, string> = {
+  TRAVEL_DATE_INVALID: "Ingresá una fecha de viaje válida.",
+  TRAVEL_DATE_OUT_OF_RANGE: "La fecha de viaje tiene que ser desde ayer y hasta dentro de un año.",
+  AIRLINE_UNKNOWN: "Elegí una aerolínea de la lista.",
+  AIRLINE_NOT_AIR: "Si elegís una aerolínea, el viaje tiene que ser aéreo.",
+  MODALITY_NOT_AIR: "Cabina, bodega o carga solo aplican a un viaje aéreo.",
+  CVI_NUMBER_REQUIRED: "Ingresá el número del certificado.",
+  ISSUED_DATE_INVALID: "Ingresá una fecha de emisión válida.",
+  ISSUED_DATE_FUTURE: "La fecha de emisión no puede ser futura.",
+  ISSUED_DATE_TOO_OLD: "La fecha de emisión tiene que ser de los últimos doce meses.",
+  VALID_UNTIL_INVALID: "Ingresá una fecha de vencimiento válida.",
+  VALID_UNTIL_BEFORE_ISSUED: "El vencimiento no puede ser anterior a la emisión.",
+  VALID_UNTIL_TOO_FAR: "Revisá el vencimiento: no puede superar un año desde la emisión.",
+  DOCUMENT_NOT_LISTED: "Ese documento no figura entre los que pide este viaje.",
+};
+
+/** v14 — the 400 body of a `travel_input_invalid`: the code, plus why. */
+export type PetTravelInputInvalidV1 = {
+  error: "travel_input_invalid";
+  /** Absent on a v13 server. */
+  reason?: PetTravelRefusalReasonV1;
+};
 
 /**
  * `POST /api/v1/pets/{publicToken}/travel/export[?trip=]` — the travel PDF, as

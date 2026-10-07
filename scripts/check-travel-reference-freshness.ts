@@ -28,7 +28,12 @@
 // Exits 0 with warnings listed, or 1 listing every structural error.
 
 import { FRESHNESS_TTL_DAYS, type FreshnessKind, isoDate } from "@/lib/domain/travel-freshness";
-import { AIRLINES, type Airline } from "@/lib/reference/airlines";
+import {
+  AIRLINES,
+  type Airline,
+  ROUTE_SUGGESTIONS_REVIEWED_AT,
+  ROUTE_SUGGESTIONS_REVIEW_BY,
+} from "@/lib/reference/airlines";
 import { BRACHYCEPHALIC_BREEDS } from "@/lib/reference/brachycephalic-breeds";
 import { CORRIDORS, type Corridor } from "@/lib/reference/cross-border-corridors";
 
@@ -195,9 +200,22 @@ export const SHIPPED_REGISTRY: ReferenceRegistry = {
   brachycephalic: BRACHYCEPHALIC_BREEDS,
 };
 
+/**
+ * The destination → airline suggestions (`servesCorridors`) have no source per
+ * row — miMAR maintains them (PO 2026-10-07) — so they are not an Entry; they
+ * share the airlines' 90-day clock and WARN past it, like every other datum.
+ */
+export function routeSuggestionsWarning(now: Date): string | null {
+  return isoDate(now) > ROUTE_SUGGESTIONS_REVIEW_BY
+    ? `airline route suggestions (servesCorridors): past their review date ${ROUTE_SUGGESTIONS_REVIEW_BY} (reviewed ${ROUTE_SUGGESTIONS_REVIEWED_AT}) — re-check which airlines fly each destination`
+    : null;
+}
+
 function run(): void {
   const verdict = evaluateReferenceFreshness(SHIPPED_REGISTRY, new Date());
   for (const warning of verdict.warnings) console.warn(`⚠ ${warning}`);
+  const routes = routeSuggestionsWarning(new Date());
+  if (routes) console.warn(`⚠ ${routes}`);
   if (verdict.errors.length > 0) {
     console.error(`✗ Travel reference freshness: ${verdict.errors.length} structural error(s):`);
     for (const error of verdict.errors) console.error(`  - ${error}`);

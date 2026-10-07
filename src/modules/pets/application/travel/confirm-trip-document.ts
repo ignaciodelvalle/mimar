@@ -32,11 +32,10 @@
 import { amendEvent } from "@/src/modules/events/application/amendment/amend-event";
 
 import { type TravelViewPet, loadTravelView } from "./load-travel-view";
-import { travelAuthzRefusal } from "./travel-edge";
+import { inputRefusal, travelAuthzRefusal } from "./travel-edge";
 import type { ConfirmTripDocumentResult, TravelActor, TravelPet } from "./types";
 
 const TRIP_NOT_FOUND_ERROR = "No encontramos ese viaje.";
-const DOCUMENT_NOT_LISTED_ERROR = "Ese documento no figura entre los que pide este viaje.";
 
 export async function confirmTripDocument(params: {
   pet: TravelPet & TravelViewPet;
@@ -69,7 +68,7 @@ export async function confirmTripDocument(params: {
     read.view.compliance?.obligations.find((o) => o.key === "required_documents")?.documents ?? [];
   const labels = listed.map((d) => d.label);
   if (!labels.includes(document)) {
-    return { ok: false, code: "input_invalid", error: DOCUMENT_NOT_LISTED_ERROR };
+    return { ok: false, ...inputRefusal("DOCUMENT_NOT_LISTED") };
   }
 
   const current = trip.documentsConfirmed;

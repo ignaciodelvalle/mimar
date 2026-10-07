@@ -116,6 +116,14 @@ export interface Airline {
   sourceUrl: string;
   lastVerifiedAt: string;
   reviewBy: string;
+  /**
+   * The destinations miMAR lists this airline FIRST for, in the trip form (v14,
+   * PO 2026-10-07). A SUGGESTED ORDER that miMAR maintains — commercial routes,
+   * not a sanitary rule, so it has no source per row — and NEVER a rule: no
+   * check reads it, and every airline stays reachable through "Buscar otra
+   * aerolínea". Reviewed on the airlines' 90-day clock (ROUTE_SUGGESTIONS_*).
+   */
+  servesCorridors: readonly CorridorId[];
   modalities: Partial<Record<Modality, AirlineModalityRule>>;
 }
 
@@ -123,6 +131,15 @@ export interface Airline {
 const LAST_VERIFIED = "2026-09-30";
 // LAST_VERIFIED + 90 days (FRESHNESS_TTL_DAYS.airline).
 const REVIEW_BY = "2026-12-29";
+
+/**
+ * When the destination → airline suggestions (`servesCorridors`) were last
+ * reviewed, and when they must be again — the same 90 days as an airline
+ * policy (PO 2026-10-07). scripts/check-travel-reference-freshness.ts reads
+ * both.
+ */
+export const ROUTE_SUGGESTIONS_REVIEWED_AT = "2026-10-07";
+export const ROUTE_SUGGESTIONS_REVIEW_BY = "2027-01-05";
 
 const NOTE_403 = "La página oficial respondió 403 al leerla; dato tomado del fragmento indexado.";
 const NOTE_INDEXED =
@@ -215,6 +232,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "AR",
     scope: "international",
     ...meta(AR_PETS),
+    servesCorridors: ["chile", "uruguay", "brasil", "ue_espana", "usa"],
     modalities: {
       cabin: {
         offered: unverified("yes", AR_PETS, NOTE_INDEXED),
@@ -275,6 +293,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "FO",
     scope: "domestic_ar",
     ...meta(FO_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: unverified(
@@ -297,6 +316,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "WJ",
     scope: "international",
     ...meta(JA_RULES),
+    servesCorridors: ["chile", "brasil"],
     modalities: {
       cabin: {
         offered: unverified(
@@ -343,6 +363,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "LA",
     scope: "international",
     ...meta(LA_PETS),
+    servesCorridors: ["chile", "brasil"],
     modalities: {
       cabin: {
         offered: unverified("yes", LA_PETS, NOTE_403),
@@ -383,6 +404,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "G3",
     scope: "international",
     ...meta(G3_CABIN),
+    servesCorridors: ["brasil"],
     modalities: {
       cabin: {
         offered: verified("yes", G3_CABIN),
@@ -413,6 +435,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "H2",
     scope: "international",
     ...meta(H2_BLOG),
+    servesCorridors: ["chile"],
     modalities: {
       cabin: {
         offered: verified("yes", H2_BLOG),
@@ -466,6 +489,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "AA",
     scope: "international",
     ...meta(AA_PETS),
+    servesCorridors: ["usa"],
     modalities: {
       cabin: {
         offered: unverified("yes", AA_PETS, `${NOTE_403} ${NOTE_THIRD_PARTY}`),
@@ -490,6 +514,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "UA",
     scope: "international",
     ...meta(UA_PETS),
+    servesCorridors: ["usa"],
     modalities: {
       cabin: {
         offered: unverified("yes", UA_PETS, `La página oficial no respondió. ${NOTE_THIRD_PARTY}`),
@@ -518,6 +543,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "DL",
     scope: "international",
     ...meta(DL_PETS),
+    servesCorridors: ["usa"],
     modalities: {
       cabin: {
         offered: verified(
@@ -577,6 +603,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "IB",
     scope: "international",
     ...meta(IB_PETS),
+    servesCorridors: ["ue_espana"],
     modalities: {
       cabin: {
         offered: unverified("yes", IB_PETS, NOTE_INDEXED),
@@ -619,6 +646,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "UX",
     scope: "international",
     ...meta(UX_PETS),
+    servesCorridors: ["ue_espana"],
     modalities: {
       cabin: {
         offered: unverified("yes", UX_PETS, NOTE_INDEXED),
@@ -704,6 +732,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "AF",
     scope: "international",
     ...meta(AF_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: unverified(
@@ -740,6 +769,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "KL",
     scope: "international",
     ...meta(KL_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: unverified("yes", KL_PETS, NOTE_INDEXED),
@@ -764,6 +794,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "LH",
     scope: "international",
     ...meta(LH_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: unverified("yes", LH_PETS, NOTE_THIRD_PARTY),
@@ -795,6 +826,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "AZ",
     scope: "international",
     ...meta(AZ_CABIN),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: verified("yes", AZ_CABIN),
@@ -830,6 +862,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "TK",
     scope: "international",
     ...meta(TK_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: unverified("yes", TK_PETS, `${NOTE_INDEXED} Solo en Economy.`),
@@ -882,6 +915,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "EK",
     scope: "international",
     ...meta(EK_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: verified(
@@ -918,6 +952,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "QR",
     scope: "international",
     ...meta(QR_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: verified("no", QR_PETS, "Solo perros de servicio certificados y halcones."),
@@ -954,6 +989,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "CM",
     scope: "international",
     ...meta(CM_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: verified(
@@ -984,6 +1020,7 @@ export const AIRLINES: readonly Airline[] = [
     iata: "AV",
     scope: "international",
     ...meta(AV_PETS),
+    servesCorridors: [],
     modalities: {
       cabin: {
         offered: verified("yes", AV_PETS),

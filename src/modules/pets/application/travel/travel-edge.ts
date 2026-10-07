@@ -15,6 +15,7 @@ import { overlayAmendments } from "@/lib/infra/amendment";
 import { canAccessTravel } from "@/lib/infra/pet-access";
 import { isAirlineId } from "@/lib/reference/airlines";
 import { isoDateInAr } from "@/lib/utils/format";
+import { PET_TRAVEL_REFUSAL_MESSAGES, type PetTravelRefusalReasonV1 } from "@dim/contract/api";
 import { isRealArDay } from "@dim/contract/input";
 
 import type { MovementTx } from "../movement/types";
@@ -24,7 +25,14 @@ import type { RecordCviInput, RecordTripInput, TravelActor, TravelPet } from "./
 export type EdgeRefusal = {
   code: "forbidden" | "pet_deceased" | "input_invalid";
   error: string;
+  /** On `input_invalid`: which input, for `/api/v1`'s `reason` (v14). */
+  reason?: PetTravelRefusalReasonV1;
 };
+
+/** An `input_invalid` with its reason and the contract's sentence for it. */
+export function inputRefusal(reason: PetTravelRefusalReasonV1): EdgeRefusal {
+  return { code: "input_invalid", error: PET_TRAVEL_REFUSAL_MESSAGES[reason], reason };
+}
 
 /**
  * The travel window (design D4): a trip may be recorded from yesterday — the
@@ -80,31 +88,22 @@ export function travelAuthzRefusal(pet: TravelPet, actor: TravelActor): EdgeRefu
 export function tripInputRefusal(input: RecordTripInput, now: Date): EdgeRefusal | null {
   const day = dayNumber(input.travelDate);
   if (day === null) {
-    return { code: "input_invalid", error: "Ingresá una fecha de viaje válida." };
+    return inputRefusal("TRAVEL_DATE_INVALID");
   }
   const today = todayNumber(now);
   if (day < today - TRIP_DAYS_BEFORE_TODAY || day > today + TRIP_DAYS_AFTER_TODAY) {
-    return {
-      code: "input_invalid",
-      error: "La fecha de viaje tiene que ser desde ayer y hasta dentro de un año.",
-    };
+    return inputRefusal("TRAVEL_DATE_OUT_OF_RANGE");
   }
   if (input.airlineId !== null) {
     if (!isAirlineId(input.airlineId)) {
-      return { code: "input_invalid", error: "Elegí una aerolínea de la lista." };
+      return inputRefusal("AIRLINE_UNKNOWN");
     }
     if (input.mode !== null && input.mode !== "air") {
-      return {
-        code: "input_invalid",
-        error: "Si elegís una aerolínea, el viaje tiene que ser aéreo.",
-      };
+      return inputRefusal("AIRLINE_NOT_AIR");
     }
   }
   if (input.intendedModality !== null && input.mode !== null && input.mode !== "air") {
-    return {
-      code: "input_invalid",
-      error: "Cabina, bodega o carga solo aplican a un viaje aéreo.",
-    };
+    return inputRefusal("MODALITY_NOT_AIR");
   }
   return null;
 }
@@ -112,38 +111,29 @@ export function tripInputRefusal(input: RecordTripInput, now: Date): EdgeRefusal
 /** Plausibility of a CVI (design D4). */
 export function cviInputRefusal(input: RecordCviInput, now: Date): EdgeRefusal | null {
   if (input.cviNumber.trim().length === 0) {
-    return { code: "input_invalid", error: "Ingresá el número del CVI." };
+    return inputRefusal("CVI_NUMBER_REQUIRED");
   }
   const issued = dayNumber(input.issuedDate);
   if (issued === null) {
-    return { code: "input_invalid", error: "Ingresá una fecha de emisión válida." };
+    return inputRefusal("ISSUED_DATE_INVALID");
   }
   const today = todayNumber(now);
   if (issued > today) {
-    return { code: "input_invalid", error: "La fecha de emisión no puede ser futura." };
+    return inputRefusal("ISSUED_DATE_FUTURE");
   }
   if (issued < today - CVI_MAX_AGE_DAYS) {
-    return {
-      code: "input_invalid",
-      error: "La fecha de emisión tiene que ser de los últimos doce meses.",
-    };
+    return inputRefusal("ISSUED_DATE_TOO_OLD");
   }
   if (input.validUntil !== null) {
     const until = dayNumber(input.validUntil);
     if (until === null) {
-      return { code: "input_invalid", error: "Ingresá una fecha de vencimiento válida." };
+      return inputRefusal("VALID_UNTIL_INVALID");
     }
     if (until < issued) {
-      return {
-        code: "input_invalid",
-        error: "El vencimiento no puede ser anterior a la emisión.",
-      };
+      return inputRefusal("VALID_UNTIL_BEFORE_ISSUED");
     }
     if (until > issued + CVI_MAX_VALIDITY_DAYS) {
-      return {
-        code: "input_invalid",
-        error: "Revisá el vencimiento: no puede superar un año desde la emisión.",
-      };
+      return inputRefusal("VALID_UNTIL_TOO_FAR");
     }
   }
   return null;

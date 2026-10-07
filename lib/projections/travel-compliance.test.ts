@@ -52,6 +52,7 @@ function makeCorridor(id: Corridor["id"], label: string, plain: PlainRules): Cor
     lastVerifiedAt: "2026-06-01",
     reviewBy: "2026-11-28",
     appliesTo: { species: ["dog", "cat"], direction: "outbound_from_ar" },
+    paper: { name: "Certificado Veterinario Internacional (CVI)", shortName: "CVI" },
     rules: rules as CorridorRules,
   };
 }

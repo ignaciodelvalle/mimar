@@ -46,6 +46,8 @@ import { db, ownerships, pets, profiles } from "@/db";
 import { TRAVEL_FORBIDDEN_COPY, TRAVEL_SEMAFORO_LABELS } from "@/lib/domain/travel-copy";
 import { OWNER_AUTHORSHIP } from "@/lib/infra/pet-access";
 import type { TravelTrip } from "@/lib/projections/travel-compliance";
+import { getAirline } from "@/lib/reference/airlines";
+import { getCorridor } from "@/lib/reference/cross-border-corridors";
 import { isoDateInAr } from "@/lib/utils/format";
 import { cancelTrip } from "@/src/modules/pets/application/travel/cancel-trip";
 import { loadTravelView, selectTrip } from "@/src/modules/pets/application/travel/load-travel-view";
@@ -54,7 +56,11 @@ import { recordTrip } from "@/src/modules/pets/application/travel/record-trip";
 import type { TravelActor } from "@/src/modules/pets/application/travel/types";
 import type { PetTravelExportV1, PetTravelV1 } from "@dim/contract/api";
 import { exportPetTravel } from "../app/api/v1/pets/[publicToken]/travel/export/export";
-import { readPetTravel } from "../app/api/v1/pets/[publicToken]/travel/payload";
+import {
+  readPetTravel,
+  toAirlineOption,
+  toCorridorOption,
+} from "../app/api/v1/pets/[publicToken]/travel/payload";
 import { withMutationOverride } from "./_helpers/db-overrides";
 
 const OWNER_ID = "33333333-4444-4555-8666-7777777700b1";
@@ -342,5 +348,44 @@ describe("selectTrip — which trip the semáforo reads", () => {
     const two = trip("b", "2026-11-10");
     expect(selectTrip([one, two], "b", now).selectedTrip?.eventId).toBe("b");
     expect(selectTrip([one, two], "zzz", now).selectedTrip?.eventId).toBe("a");
+  });
+});
+
+describe("v14 form options — additive, so a v13 app still reads them", () => {
+  it("a destination carries its paper, its deadlines and its longest wait", () => {
+    expect(toCorridorOption(getCorridor("chile"))).toEqual({
+      id: "chile",
+      label: "Chile",
+      paper: { name: "Certificado Zoosanitario de Importación (CZI)", shortName: "CZI" },
+      leadHints: [
+        "La antirrábica tiene que tener al menos 21 días el día del viaje.",
+        "El antiparasitario va entre 5 y 30 días antes del CZI.",
+        "El CZI se emite dentro de los 10 días previos al viaje.",
+      ],
+      leadDays: 21,
+    });
+  });
+
+  it("an airline carries the destinations it is suggested for and the modalities it offers", () => {
+    expect(toAirlineOption(getAirline("latam"))).toEqual({
+      id: "latam",
+      name: "LATAM",
+      corridors: ["chile", "brasil"],
+      modalities: [
+        { modality: "cabin", offered: "yes", maxWeightKg: 7, includesCarrier: true },
+        { modality: "hold", offered: "yes", maxWeightKg: 32, includesCarrier: true },
+      ],
+    });
+    // Emirates publishes neither cabin nor hold: only cargo is offered.
+    expect(toAirlineOption(getAirline("emirates")).modalities?.map((m) => m.modality)).toEqual([
+      "cargo",
+    ]);
+    // A "restricted" modality is offered, and says so.
+    expect(toAirlineOption(getAirline("american")).modalities).toContainEqual({
+      modality: "hold",
+      offered: "restricted",
+      maxWeightKg: null,
+      includesCarrier: false,
+    });
   });
 });

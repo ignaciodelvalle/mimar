@@ -13,6 +13,7 @@ import {
   type ReferenceRegistry,
   SHIPPED_REGISTRY,
   evaluateReferenceFreshness,
+  routeSuggestionsWarning,
 } from "../scripts/check-travel-reference-freshness";
 import { travelReferenceRows } from "../scripts/travel-reference-json";
 
@@ -52,6 +53,13 @@ describe("the shipped registry", () => {
     const verdict = evaluateReferenceFreshness(SHIPPED_REGISTRY, new Date("2027-10-01T00:00:00Z"));
     expect(verdict.errors).toEqual([]);
     expect(verdict.warnings.length).toBe(verdict.checked);
+  });
+
+  it("the destination → airline suggestions warn past their 90 days, and only warn", () => {
+    expect(routeSuggestionsWarning(new Date("2026-10-07T12:00:00Z"))).toBeNull();
+    expect(routeSuggestionsWarning(new Date("2027-01-06T12:00:00Z"))).toMatch(
+      /servesCorridors.*past their review date 2027-01-05/,
+    );
   });
 
   it("exports one provenance row per entry", () => {

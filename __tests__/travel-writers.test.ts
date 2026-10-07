@@ -35,6 +35,7 @@ import { recordCvi } from "@/src/modules/pets/application/travel/record-cvi";
 import { recordTrip } from "@/src/modules/pets/application/travel/record-trip";
 import { loadOverlaidMovements } from "@/src/modules/pets/application/travel/travel-edge";
 import type { TravelActor, TravelPet } from "@/src/modules/pets/application/travel/types";
+import { PET_TRAVEL_REFUSAL_MESSAGES } from "@dim/contract/api";
 import { runPetTravelCommand } from "../app/api/v1/pets/[publicToken]/travel/commands";
 import { withMutationOverride } from "./_helpers/db-overrides";
 
@@ -275,20 +276,29 @@ describe("recordTrip", () => {
       airlineId: null,
       intendedModality: null,
     };
-    for (const input of [
-      { ...base, travelDate: day(-2) },
-      { ...base, travelDate: day(366) },
-      { ...base, travelDate: "2026-02-31" },
-      { ...base, travelDate: day(5), airlineId: "not-an-airline" },
-      { ...base, travelDate: day(5), airlineId: "latam", mode: "land" as const },
-    ]) {
+    for (const [input, reason] of [
+      [{ ...base, travelDate: day(-2) }, "TRAVEL_DATE_OUT_OF_RANGE"],
+      [{ ...base, travelDate: day(366) }, "TRAVEL_DATE_OUT_OF_RANGE"],
+      [{ ...base, travelDate: "2026-02-31" }, "TRAVEL_DATE_INVALID"],
+      [{ ...base, travelDate: day(5), airlineId: "not-an-airline" }, "AIRLINE_UNKNOWN"],
+      [
+        { ...base, travelDate: day(5), airlineId: "latam", mode: "land" as const },
+        "AIRLINE_NOT_AIR",
+      ],
+    ] as const) {
       const result = await recordTrip({
         pet: travelPet(pet),
         actor: ownerActor(),
         input,
         clientIdempotencyKey: key(),
       });
-      expect(result, JSON.stringify(input)).toMatchObject({ ok: false, code: "input_invalid" });
+      // v14: the refusal says WHICH input, in the contract's own sentence.
+      expect(result, JSON.stringify(input)).toMatchObject({
+        ok: false,
+        code: "input_invalid",
+        reason,
+        error: PET_TRAVEL_REFUSAL_MESSAGES[reason],
+      });
     }
     // Yesterday is inside the window: the owner registering on arrival.
     const yesterday = await recordTrip({
@@ -618,7 +628,11 @@ describe("confirmTripDocument", () => {
 
     const unlisted = await runPetTravelCommand(ctx("Pasaporte del titular"));
     expect(unlisted.status).toBe(400);
-    expect(await unlisted.json()).toEqual({ error: "travel_input_invalid" });
+    // v14: the code a v13 app maps, plus which input.
+    expect(await unlisted.json()).toEqual({
+      error: "travel_input_invalid",
+      reason: "DOCUMENT_NOT_LISTED",
+    });
   });
 });
 

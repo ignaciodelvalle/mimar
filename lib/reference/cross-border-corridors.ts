@@ -67,6 +67,18 @@ export interface Corridor {
   /** Fase 1 is outbound-from-Argentina only (spec R3.4). */
   appliesTo: { species: readonly ("dog" | "cat")[]; direction: "outbound_from_ar" };
   /**
+   * The paper this destination asks for, named the way IT names it (v14, QA
+   * 2026-10-07 copy 4): Chile's CZI, the EU's Certificado Sanitario, the
+   * Mercosur CVI. The libreta's `cvi_issued` row is the same record for all of
+   * them; only the name the owner reads changes.
+   */
+  paper: { name: string; shortName: string };
+  /**
+   * The destination accepts an ISO tattoo in place of the microchip (Chile).
+   * The microchip requirement is then called "Microchip o tatuaje".
+   */
+  acceptsTattoo?: boolean;
+  /**
    * Every declared rule carries its own source —
    * scripts/check-travel-reference-freshness.ts fails on one that does not.
    */
@@ -122,6 +134,25 @@ const UY_INGRESO = "https://www.gub.uy/tramites/solicitud-ingreso-mascotas-urugu
 const EU_2026_636 = "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=OJ%3AL_202600636";
 const CDC_DOGS = "https://www.cdc.gov/importation/dogs/rabies-free-low-risk-countries.html";
 
+/**
+ * Who PUBLISHES each source, for the "Fuente:" line (v14, QA 2026-10-07 copy
+ * 5): the line used to say "Fuente: Chile", naming the destination instead of
+ * the body that wrote the rule. Every corridor source URL must be here —
+ * cross-border-corridors.test.ts pins it.
+ */
+export const CORRIDOR_SOURCE_ISSUERS: Readonly<Record<string, string>> = {
+  [SENASA_CHILE]: "SENASA, requisitos para Chile",
+  [SENASA_MERCOSUR]: "SENASA, requisitos para el Mercosur",
+  [UY_INGRESO]: "MGAP, ingreso de mascotas a Uruguay",
+  [EU_2026_636]: "Reglamento de Ejecución (UE) 2026/636",
+  [CDC_DOGS]: "CDC, ingreso de perros a Estados Unidos",
+};
+
+/** The issuer of a corridor source, or the corridor's own label when unknown. */
+export function corridorIssuerLabel(sourceUrl: string, fallback: string): string {
+  return CORRIDOR_SOURCE_ISSUERS[sourceUrl] ?? fallback;
+}
+
 /** Provenance of a rule verified at `sourceUrl` on LAST_VERIFIED. */
 function verifiedAt(sourceUrl: string, note?: string): SourceMeta {
   return {
@@ -163,6 +194,8 @@ export const CORRIDORS: readonly Corridor[] = [
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
+    paper: { name: "Certificado Zoosanitario de Importación (CZI)", shortName: "CZI" },
+    acceptsTattoo: true,
     rules: {
       // CZI: ingreso dentro de los 10 días desde la emisión, prorrogable 5.
       document_issuance_window_days: rule(10, SENASA_CHILE, {
@@ -209,6 +242,10 @@ export const CORRIDORS: readonly Corridor[] = [
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
+    paper: {
+      name: "Certificado Veterinario Internacional (CVI) modelo Mercosur",
+      shortName: "CVI Mercosur",
+    },
     rules: {
       // CVI válido 60 días desde emisión (examen clínico dentro de los 10
       // días previos a la emisión — ese es el paso más ajustado, pero el
@@ -256,6 +293,10 @@ export const CORRIDORS: readonly Corridor[] = [
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
+    paper: {
+      name: "Certificado Veterinario Internacional (CVI) modelo Mercosur",
+      shortName: "CVI Mercosur",
+    },
     rules: {
       // CVI válido 60 días desde la emisión.
       document_issuance_window_days: rule(60, SENASA_MERCOSUR, { document: "senasa_cvi" }),
@@ -303,6 +344,7 @@ export const CORRIDORS: readonly Corridor[] = [
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
+    paper: { name: "Certificado Sanitario UE", shortName: "Certificado Sanitario UE" },
     rules: {
       // Certificado Sanitario UE, emitido por el veterinario oficial de SENASA
       // <=10 días antes de la llegada.
@@ -360,6 +402,7 @@ export const CORRIDORS: readonly Corridor[] = [
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
+    paper: { name: "Certificado Veterinario Internacional (CVI)", shortName: "CVI" },
     rules: {
       // Certificado Libre de Miasis (screwworm), emitido <=5 días antes del
       // embarque — la ventana es la de ESE certificado, no la del CVI.
@@ -418,6 +461,72 @@ export function assertCorridorCoverage(corridors: readonly Corridor[]): void {
       `lib/reference/cross-border-corridors.ts: corridor(s) without a citation sourceUrl: ${missingSource.map((c) => c.id).join(", ")}`,
     );
   }
+}
+
+/** "Los perros" when a rule is scoped to dogs only, else "". */
+function speciesPrefix(species: readonly TravelSpecies[] | undefined): string {
+  if (!species || species.length !== 1) return "";
+  return species[0] === "dog" ? "Perros: " : "Gatos: ";
+}
+
+/**
+ * The destination's deadlines as sentences, for the trip form's date step
+ * (v14, design "Viaje en pasos" pin 10). Built from the corridor's RULES and
+ * nothing about the animal: they say what the destination asks, never whether
+ * this animal meets it — the semáforo alone says that, after the trip exists.
+ */
+export function corridorLeadHints(corridor: Corridor): string[] {
+  const r = corridor.rules;
+  const paper = corridor.paper.shortName;
+  const hints: string[] = [];
+  if (r.rabies_vaccination_to_travel_wait_days) {
+    const n = r.rabies_vaccination_to_travel_wait_days.value;
+    hints.push(`La antirrábica tiene que tener al menos ${n} días el día del viaje.`);
+  }
+  if (r.microchip_before_vaccination_required?.value === true) {
+    hints.push("El microchip tiene que estar implantado antes de la antirrábica.");
+  }
+  if (r.rabies_vaccination_min_age_days) {
+    const n = r.rabies_vaccination_min_age_days.value;
+    hints.push(`La antirrábica cuenta si se aplicó con al menos ${n} días de edad.`);
+  }
+  const ceiling = r.parasite_treatment_window_days?.value ?? null;
+  const floor = r.parasite_treatment_min_days_before?.value ?? null;
+  if (ceiling !== null && floor !== null) {
+    hints.push(`El antiparasitario va entre ${floor} y ${ceiling} días antes del ${paper}.`);
+  } else if (ceiling !== null) {
+    hints.push(`El antiparasitario va hasta ${ceiling} días antes del ${paper}.`);
+  } else if (floor !== null) {
+    hints.push(`El antiparasitario va al menos ${floor} días antes del ${paper}.`);
+  }
+  const window = r.document_issuance_window_days;
+  if (window) {
+    hints.push(
+      window.document === "miasis_certificate"
+        ? `El Certificado Libre de Miasis se emite dentro de los ${window.value} días previos al embarque.`
+        : `El ${paper} se emite dentro de los ${window.value} días previos al viaje.`,
+    );
+  }
+  if (r.min_animal_age_days) {
+    const age = r.min_animal_age_days;
+    const who = speciesPrefix(age.appliesToSpecies);
+    hints.push(
+      `${who}${who ? "al menos" : "Al menos"} ${age.value} días de edad el día del viaje.`,
+    );
+  }
+  return hints;
+}
+
+/**
+ * The longest wait the destination declares before departure, in days — the
+ * date step warns when the trip is closer than this. Null when none.
+ */
+export function corridorLeadDays(corridor: Corridor): number | null {
+  const waits = [
+    corridor.rules.rabies_vaccination_to_travel_wait_days?.value,
+    corridor.rules.rabies_titer_test_wait_days?.value,
+  ].filter((n): n is number => typeof n === "number");
+  return waits.length > 0 ? Math.max(...waits) : null;
 }
 
 export function getCorridor(id: CorridorId): Corridor {

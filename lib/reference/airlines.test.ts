@@ -13,6 +13,8 @@ import {
   AIRLINE_IDS,
   type Airline,
   type BreedRestriction,
+  ROUTE_SUGGESTIONS_REVIEWED_AT,
+  ROUTE_SUGGESTIONS_REVIEW_BY,
   getAirline,
   isAirlineId,
 } from "@/lib/reference/airlines";
@@ -21,6 +23,7 @@ import {
   brachycephalicBreedsFor,
 } from "@/lib/reference/brachycephalic-breeds";
 import { ALL_BREEDS, CAT_BREEDS, DOG_BREEDS } from "@/lib/reference/breeds";
+import { CORRIDOR_IDS, type CorridorId } from "@/lib/reference/cross-border-corridors";
 
 function restrictionsOf(airline: Airline): BreedRestriction[] {
   return Object.values(airline.modalities).flatMap((rule) => [
@@ -113,5 +116,48 @@ describe("brachycephalic list", () => {
     expect(brachycephalicBreedsFor("dog")).toContain("Pug");
     expect(brachycephalicBreedsFor("cat")).toContain("Persa");
     expect(brachycephalicBreedsFor("rabbit")).toEqual([]);
+  });
+});
+
+describe("destination → airline suggestions (v14, PO 2026-10-07)", () => {
+  function suggestedFor(corridor: CorridorId): string[] {
+    return AIRLINES.filter((a) => a.servesCorridors.includes(corridor)).map((a) => a.id);
+  }
+
+  it("lists, per destination, the airlines the approved design puts first", () => {
+    expect(suggestedFor("chile").sort()).toEqual(
+      ["aerolineas_argentinas", "jetsmart", "latam", "sky"].sort(),
+    );
+    expect(suggestedFor("uruguay")).toEqual(["aerolineas_argentinas"]);
+    expect(suggestedFor("brasil").sort()).toEqual(
+      ["aerolineas_argentinas", "gol", "jetsmart", "latam"].sort(),
+    );
+    expect(suggestedFor("ue_espana").sort()).toEqual(
+      ["aerolineas_argentinas", "air_europa", "iberia"].sort(),
+    );
+    expect(suggestedFor("usa").sort()).toEqual(
+      ["aerolineas_argentinas", "american", "delta", "united"].sort(),
+    );
+  });
+
+  it("never suggests an airline against its own published policy", () => {
+    // Flybondi's pet policy is domestic only; Sky publishes no pets to or from the US.
+    expect(getAirline("flybondi").servesCorridors).toEqual([]);
+    expect(getAirline("sky").servesCorridors).not.toContain("usa");
+  });
+
+  it("names only real destinations, once each", () => {
+    for (const a of AIRLINES) {
+      for (const c of a.servesCorridors) expect(CORRIDOR_IDS, a.id).toContain(c);
+      expect(new Set(a.servesCorridors).size, a.id).toBe(a.servesCorridors.length);
+    }
+  });
+
+  it("is reviewed on the airlines' 90-day clock", () => {
+    const days =
+      (Date.parse(`${ROUTE_SUGGESTIONS_REVIEW_BY}T00:00:00Z`) -
+        Date.parse(`${ROUTE_SUGGESTIONS_REVIEWED_AT}T00:00:00Z`)) /
+      86_400_000;
+    expect(days).toBe(90);
   });
 });

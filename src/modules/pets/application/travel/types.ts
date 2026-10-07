@@ -9,6 +9,7 @@
 import type { OwnershipRole, Pet } from "@/db";
 import type { PetAccessPath, PetEventAuthorship } from "@/lib/infra/pet-access";
 import type { CorridorId } from "@/lib/reference/cross-border-corridors";
+import type { PetTravelRefusalReasonV1 } from "@dim/contract/api";
 
 /**
  * Who is writing, as the door resolved it. The use-case decides
@@ -67,13 +68,20 @@ export type TravelRefusalCode =
   | "trip_not_found"
   | "write_failed";
 
-export type TravelWriteResult =
-  | { ok: true; eventId: string; replayed: boolean }
-  | { ok: false; code: TravelRefusalCode; error: string };
+/**
+ * A refusal: the code, the es-AR sentence the web shows, and — on
+ * `input_invalid` — which input (v14), which `/api/v1` carries as `reason`.
+ */
+export type TravelRefusal = {
+  ok: false;
+  code: TravelRefusalCode;
+  error: string;
+  reason?: PetTravelRefusalReasonV1;
+};
 
-export type CancelTripResult =
-  | { ok: true; tripEventId: string; changed: boolean }
-  | { ok: false; code: TravelRefusalCode; error: string };
+export type TravelWriteResult = { ok: true; eventId: string; replayed: boolean } | TravelRefusal;
+
+export type CancelTripResult = { ok: true; tripEventId: string; changed: boolean } | TravelRefusal;
 
 /** Same shape as a cancel: idempotent on the STATE, `changed: false` on a repeat. */
 export type ConfirmTripDocumentResult = CancelTripResult;

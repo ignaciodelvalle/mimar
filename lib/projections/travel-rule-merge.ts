@@ -36,7 +36,11 @@ import {
   type TravelSpecies,
 } from "@/lib/domain/travel-strictness";
 import type { Airline, AirlineDocument, AirlineModalityRule } from "@/lib/reference/airlines";
-import type { Corridor, CorridorId } from "@/lib/reference/cross-border-corridors";
+import {
+  type Corridor,
+  type CorridorId,
+  corridorIssuerLabel,
+} from "@/lib/reference/cross-border-corridors";
 import { formatDate } from "@/lib/utils/format";
 
 /** Where one rule value came from, as shown next to the obligation. */
@@ -45,6 +49,11 @@ export type RuleSourceRef = {
   id: string;
   /** Corridor label ("Chile") or airline name ("Iberia"). */
   label: string;
+  /**
+   * Who PUBLISHES the rule — "SENASA, requisitos para Chile", "LATAM, política
+   * de mascotas" — for the "Fuente:" line (v14, QA 2026-10-07 copy 5).
+   */
+  issuerLabel: string;
   sourceUrl: string;
   lastVerifiedAt: string;
   reviewBy: string;
@@ -87,6 +96,10 @@ export function sourceRef(
     kind,
     id,
     label,
+    issuerLabel:
+      kind === "corridor"
+        ? corridorIssuerLabel(meta.sourceUrl, label)
+        : `${label}, política de mascotas`,
     sourceUrl: meta.sourceUrl,
     lastVerifiedAt: meta.lastVerifiedAt,
     reviewBy: meta.reviewBy,
