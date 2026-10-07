@@ -28,6 +28,10 @@ const {
   mockRedirect,
   mockTransaction,
   mockFindBridgedReportReplay,
+  mockLockAndFindBridgedReportReplay,
+  mockDeleteUnlinkedReport,
+  mockRequireUserOrRedirect,
+  mockDbSelect,
 } = vi.hoisted(() => ({
   mockInsertReportWithRetry: vi.fn(),
   mockFindPetByToken: vi.fn(),
@@ -40,6 +44,10 @@ const {
   mockRedirect: vi.fn(),
   mockTransaction: vi.fn(),
   mockFindBridgedReportReplay: vi.fn(),
+  mockLockAndFindBridgedReportReplay: vi.fn(),
+  mockDeleteUnlinkedReport: vi.fn(),
+  mockRequireUserOrRedirect: vi.fn(),
+  mockDbSelect: vi.fn(),
 }));
 
 vi.mock("../../infrastructure/welfare-repository", () => {
@@ -52,6 +60,8 @@ vi.mock("../../infrastructure/welfare-repository", () => {
     insertPetEventIdempotent = mockInsertPetEventIdempotent;
     setFlagged = mockSetFlagged;
     findBridgedReportReplay = mockFindBridgedReportReplay;
+    lockAndFindBridgedReportReplay = mockLockAndFindBridgedReportReplay;
+    deleteUnlinkedReport = mockDeleteUnlinkedReport;
   }
   return { WelfareRepository };
 });
@@ -60,9 +70,16 @@ vi.mock("@/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/db")>();
   return {
     ...actual,
-    db: { transaction: mockTransaction },
+    // `select` serves the org action's membership gate (one chained query).
+    db: { transaction: mockTransaction, select: mockDbSelect },
   };
 });
+
+// The org action's session gate. The citizen action never calls it.
+vi.mock("@/lib/infra/auth-guards", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/infra/auth-guards")>()),
+  requireUserOrRedirect: mockRequireUserOrRedirect,
+}));
 
 vi.mock("@/lib/infra/case-helpers", () => ({
   openCase: mockOpenCase,
@@ -324,5 +341,131 @@ describe("createWelfareReportAction — a retry with the same key replays", () =
 
     expect(mockFindBridgedReportReplay).not.toHaveBeenCalled();
     expect(mockInsertReportWithRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The concurrent half: the pre-check missed (the twin had not committed), the
+// write's own claim found it, and this submit's inserted row and files go.
+describe("createWelfareReportAction — a concurrent twin filed it first", () => {
+  vi.setConfig({ testTimeout: 20_000 });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockInsertReportWithRetry.mockResolvedValue({ id: "report-2", referenceCode: "DEN-TWIN-0002" });
+    mockFindPetByToken.mockResolvedValue({ id: "pet-1", seedTag: null });
+    mockFindActiveOwnership.mockResolvedValue(null);
+    mockFindBridgedReportReplay.mockResolvedValue(null);
+    mockLockAndFindBridgedReportReplay.mockResolvedValue({
+      reportId: "report-1",
+      referenceCode: REF_CODE,
+    });
+    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({}));
+  });
+
+  it("discards the row it inserted and lands on the original", async () => {
+    setUser({ id: "user-123" });
+    const fd = baseFormData("with_contact");
+    fd.set("kind", "physical_abuse");
+    fd.set("subjectKind", "registered_pet");
+    fd.set("subjectPetToken", "DIM-PET1-TEST");
+    fd.set("clientIdempotencyKey", "key-twin");
+    fd.set("reporterContactEmail", "reporter@example.com");
+
+    const { createWelfareReportAction } = await import("../../actions");
+    const state = await createWelfareReportAction({ error: null }, fd);
+
+    expect(state).toEqual({ error: null, redirectTo: "/denuncias/mias" });
+    expect(mockDeleteUnlinkedReport).toHaveBeenCalledWith("report-2");
+    expect(mockOpenCase).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The ORG door's replay (plan A5c): same key + same member lands on the
+// original before any report row or case exists; another member does not.
+// ---------------------------------------------------------------------------
+
+describe("createOrgWelfareReportAction — a retry with the same key replays", () => {
+  vi.setConfig({ testTimeout: 20_000 });
+
+  const ORG_ROW = {
+    orgId: "org-1",
+    orgDisplayName: "Refugio Test",
+    orgVerified: true,
+    memberRole: "coordinator",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // The membership gate: select().from().innerJoin().where().limit() → [ORG_ROW].
+    const chain = {
+      from: vi.fn(),
+      innerJoin: vi.fn(),
+      where: vi.fn(),
+      limit: vi.fn().mockResolvedValue([ORG_ROW]),
+    };
+    chain.from.mockReturnValue(chain);
+    chain.innerJoin.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    mockDbSelect.mockReturnValue(chain);
+    mockFindPetByToken.mockResolvedValue({ id: "pet-1", seedTag: null });
+  });
+
+  function orgPetReport(key: string): FormData {
+    const fd = new FormData();
+    fd.set("kind", "physical_abuse");
+    fd.set(
+      "description",
+      "Documentamos durante tres visitas que el animal permanece atado sin agua ni sombra, con lesiones visibles en el lomo y las patas traseras.",
+    );
+    fd.set("subjectKind", "registered_pet");
+    fd.set("subjectPetToken", "DIM-PET1-TEST");
+    fd.set("clientIdempotencyKey", key);
+    return fd;
+  }
+
+  it("same key, same member: lands on the original — no report row, no case", async () => {
+    mockRequireUserOrRedirect.mockResolvedValue({ user: { id: "member-1" } });
+    mockFindBridgedReportReplay.mockResolvedValue({
+      reportId: "report-1",
+      referenceCode: REF_CODE,
+    });
+
+    const { createOrgWelfareReportAction } = await import("../../actions");
+    const state = await createOrgWelfareReportAction(
+      "org-tok-1",
+      { error: null },
+      orgPetReport("k1"),
+    );
+
+    expect(state).toEqual({
+      error: null,
+      redirectTo: `/org/org-tok-1/maltrato/recibidos?tab=emitidos&creado=${REF_CODE}`,
+    });
+    expect(mockFindBridgedReportReplay).toHaveBeenCalledWith("pet-1", "k1", "member-1");
+    expect(mockInsertReportWithRetry).not.toHaveBeenCalled();
+    expect(mockOpenCase).not.toHaveBeenCalled();
+  });
+
+  it("another member with the same key is asked about THEIR key and gets no replay", async () => {
+    mockRequireUserOrRedirect.mockResolvedValue({ user: { id: "member-2" } });
+    // The ledger is scoped to the reporter: nothing filed by member-2 under k1.
+    mockFindBridgedReportReplay.mockImplementation(
+      async (_pet: string, _key: string, reporter: string) =>
+        reporter === "member-1" ? { reportId: "report-1", referenceCode: REF_CODE } : null,
+    );
+
+    const { createOrgWelfareReportAction } = await import("../../actions");
+    const state = await createOrgWelfareReportAction(
+      "org-tok-1",
+      { error: null },
+      orgPetReport("k1"),
+    );
+
+    expect(mockFindBridgedReportReplay).toHaveBeenCalledWith("pet-1", "k1", "member-2");
+    // Not a replay: it went on to the org report's own gates (evidence is
+    // required, and this form carries none).
+    expect(state.redirectTo).toBeUndefined();
+    expect(state.error).toBe("Una denuncia profesional requiere al menos un adjunto de evidencia.");
   });
 });

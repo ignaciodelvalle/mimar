@@ -67,7 +67,7 @@ import { addReporterComment } from "./application/add-reporter-comment";
 import { assignWelfare } from "./application/assign-welfare";
 import { closeWelfareReport } from "./application/close-welfare-report";
 import { confirmWelfareAsSpam } from "./application/confirm-welfare-as-spam";
-import { createOrgWelfareReport } from "./application/create-org-welfare-report";
+import { createOrgWelfareReport, orgReportRedirect } from "./application/create-org-welfare-report";
 import { createWelfareReport } from "./application/create-welfare-report";
 import { escalateModerationToAdmin } from "./application/escalate-moderation-to-admin";
 import { generateMpfExport } from "./application/generate-mpf-export";
@@ -823,6 +823,16 @@ const WELFARE_SEVERITIES = ["low", "medium", "high", "critical"];
 const WELFARE_SUBJECT_KINDS = ["registered_pet", "unowned_animal", "location", "general"];
 const ORG_WELFARE_ROLES = new Set(["admin", "coordinator", "member", "vet_individual"]);
 
+/**
+ * The report row (and its uploaded files) of a submit whose write turned out to
+ * be a concurrent twin's replay — inserted before the transaction, never linked
+ * to a case. See application/report-key-claim.ts.
+ */
+async function discardSupersededReport(reportId: string, uploadedPaths: string[]): Promise<void> {
+  await removeWelfareEvidence(uploadedPaths);
+  await repo.deleteUnlinkedReport(reportId);
+}
+
 export async function createWelfareReportAction(
   _previous: WelfareReportFormState,
   formData: FormData,
@@ -1146,6 +1156,11 @@ export async function createWelfareReportAction(
     await removeWelfareEvidence(uploadResult?.uploadedPaths ?? []);
     return { error: result.error };
   }
+  if (result.discardInserted) {
+    // A twin of this submit filed it first: this one's row and files go.
+    await discardSupersededReport(insertedId, uploadResult?.uploadedPaths ?? []);
+    return { error: null, redirectTo: result.redirectTo };
+  }
 
   // Anonymous reporter → hand them a session now (rationale in
   // mintFreshReporterSession). Authenticated ones land on /denuncias/mias, which
@@ -1283,12 +1298,8 @@ export async function createOrgWelfareReportAction(
     const replayed = replayPet
       ? await repo.findBridgedReportReplay(replayPet.id, orgClientIdempotencyKey, user.id)
       : null;
-    if (replayed) {
-      return {
-        error: null,
-        redirectTo: `/org/${orgToken}/maltrato/recibidos?tab=emitidos&creado=${encodeURIComponent(replayed.referenceCode)}`,
-      };
-    }
+    if (replayed)
+      return { error: null, redirectTo: orgReportRedirect(orgToken, replayed.referenceCode) };
   }
 
   // File upload required for org reports (spec R2)
@@ -1412,6 +1423,10 @@ export async function createOrgWelfareReportAction(
   if (!result.ok) {
     await removeWelfareEvidence(uploadResult.uploadedPaths);
     return { error: result.error };
+  }
+  // A twin of this submit filed it first: this one's row and files go.
+  if (result.discardInserted) {
+    await discardSupersededReport(insertedId, uploadResult.uploadedPaths);
   }
 
   return { error: null, redirectTo: result.redirectTo };

@@ -54,9 +54,11 @@ function makeRepo(
   | "insertNotifications"
   | "findOpenOtherWelfareCasesForPet"
   | "findInstitutionalAdmins"
+  | "lockAndFindBridgedReportReplay"
 > {
   return {
     insertAttachments: vi.fn().mockResolvedValue(undefined),
+    lockAndFindBridgedReportReplay: vi.fn().mockResolvedValue(null),
     linkCase: vi.fn().mockResolvedValue(undefined),
     insertPetEvent: vi.fn().mockResolvedValue(undefined),
     insertPetEventIdempotent: vi.fn().mockResolvedValue({ wasNoop: false }),
@@ -75,6 +77,7 @@ function makeRepo(
     | "insertNotifications"
     | "findOpenOtherWelfareCasesForPet"
     | "findInstitutionalAdmins"
+    | "lockAndFindBridgedReportReplay"
   >;
 }
 
@@ -628,5 +631,48 @@ describe("createOrgWelfareReport — observed symptoms raise a signal (S7)", () 
       expect.anything(),
     );
     expect(deps.surveillance.flush).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two copies of one org submit in flight at once (plan A5c) — twin of the
+// citizen test in create-welfare-report.test.ts.
+// ---------------------------------------------------------------------------
+
+describe("createOrgWelfareReport — a concurrent twin already filed it", () => {
+  const PET_INPUT = {
+    ...BASE_INPUT,
+    kind: "physical_abuse" as const,
+    subjectKind: "registered_pet" as const,
+    subjectPetId: "pet-002" as string | null,
+    orgToken: "org-tok-1",
+    clientIdempotencyKey: "org-key-twin" as string | null,
+  };
+
+  it("writes nothing — no case, no audit, no notices — and answers the original's EMITIDOS landing", async () => {
+    const deps = makeDeps({
+      lockAndFindBridgedReportReplay: vi
+        .fn()
+        .mockResolvedValue({ reportId: "rpt-original", referenceCode: "DEN-ORIG-02" }),
+    } as Partial<WelfareRepository>);
+
+    const result = await createOrgWelfareReport(PET_INPUT, deps);
+
+    expect(result).toEqual({
+      ok: true,
+      reportId: "rpt-original",
+      referenceCode: "DEN-ORIG-02",
+      redirectTo: "/org/org-tok-1/maltrato/recibidos?tab=emitidos&creado=DEN-ORIG-02",
+      discardInserted: true,
+    });
+    expect(deps.repo.lockAndFindBridgedReportReplay).toHaveBeenCalledWith(
+      "pet-002",
+      "org-key-twin",
+      ORG_MEMBER.userId,
+      {},
+    );
+    expect(deps.openCase).not.toHaveBeenCalled();
+    expect(deps.repo.insertAudit).not.toHaveBeenCalled();
+    expect(deps.repo.insertNotifications).not.toHaveBeenCalled();
   });
 });
