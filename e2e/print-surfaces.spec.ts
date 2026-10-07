@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 import { seedFixtureVerdict } from "./_seed-profile";
-import { endSponsorship, pickSponsorablePetToken, sponsorPet } from "./_shelter-custody";
+import {
+  SPONSOR_PET_PREFIX,
+  endSponsorship,
+  registerSponsorablePet,
+  resetToNone,
+  sponsorPet,
+} from "./_shelter-custody";
+import { deletePetsByNamePrefix } from "./demo/_db-cleanup";
 import { ACCOUNTS, loginAs } from "./demo/_helpers";
 
 /**
@@ -296,14 +303,24 @@ test.describe("the adoption contract print surface", () => {
     // nights. The titular asks the refugio to sponsor one of their pets, the
     // org accepts (a live shelter custody this test owns), and the `finally`
     // below ends it through the titular's own "Dar de baja".
-    test.setTimeout(120_000);
+    //
+    // AND THE PET ITSELF IS THIS RUN'S (A13, 2026-10-07). It used to be the
+    // first registry row the rehome page accepted, and on a long-lived DB the
+    // registry also holds pets owner@ fosters or cares for — rows the rehome
+    // page answers with another screen or a 404 (registerSponsorablePet says
+    // which, and why the failure looked like "landed on the org panel"). A
+    // run-unique name, picked by exact name, removed in `finally`.
+    test.setTimeout(180_000);
+    const petName = `${SPONSOR_PET_PREFIX}${Date.now()}`;
+    await deletePetsByNamePrefix(SPONSOR_PET_PREFIX);
     await loginAs(page, ACCOUNTS.orgAdmin);
     const titularContext = await browser.newContext();
     const titular = await titularContext.newPage();
     let petToken = "";
     try {
       await loginAs(titular, ACCOUNTS.owner);
-      petToken = await pickSponsorablePetToken(titular);
+      petToken = await registerSponsorablePet(titular, petName);
+      await resetToNone(titular, petToken);
       const orgToken = await sponsorPet(titular, page, petToken);
 
       const contractUrl = `/org/${orgToken}/mascotas/${petToken}/adoption/contrato`;
@@ -331,14 +348,19 @@ test.describe("the adoption contract print surface", () => {
       expect(await viaGet.text()).not.toContain("window.print()");
     } finally {
       // Logged, not thrown: a cleanup failure must not replace the assertion
-      // that brought us here, and the next sponsorship walk resets every
-      // candidate pet first anyway.
+      // that brought us here. The custody ends through the titular's own "Dar
+      // de baja" on ANY target; the pet itself goes only on a local database
+      // (deletePetsByNamePrefix is a no-op elsewhere — there is no "delete my
+      // pet" flow), and the sweep above clears a crashed run's leftover.
       if (petToken) {
         await endSponsorship(titular, petToken).catch((err) =>
           console.error(`[print-surfaces] could not end the sponsorship of ${petToken}:`, err),
         );
       }
       await titularContext.close();
+      await deletePetsByNamePrefix(SPONSOR_PET_PREFIX).catch((err) =>
+        console.error(`[print-surfaces] could not sweep ${petName}:`, err),
+      );
     }
   });
 });
