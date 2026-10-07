@@ -55,10 +55,12 @@ function makeRepo(
   | "findOpenOtherWelfareCasesForPet"
   | "findInstitutionalAdmins"
   | "lockAndFindBridgedReportReplay"
+  | "lockAndFindReportByKeyDigest"
 > {
   return {
     insertAttachments: vi.fn().mockResolvedValue(undefined),
     lockAndFindBridgedReportReplay: vi.fn().mockResolvedValue(null),
+    lockAndFindReportByKeyDigest: vi.fn().mockResolvedValue(null),
     linkCase: vi.fn().mockResolvedValue(undefined),
     insertPetEvent: vi.fn().mockResolvedValue(undefined),
     insertPetEventIdempotent: vi.fn().mockResolvedValue({ wasNoop: false }),
@@ -78,6 +80,7 @@ function makeRepo(
     | "findOpenOtherWelfareCasesForPet"
     | "findInstitutionalAdmins"
     | "lockAndFindBridgedReportReplay"
+    | "lockAndFindReportByKeyDigest"
   >;
 }
 

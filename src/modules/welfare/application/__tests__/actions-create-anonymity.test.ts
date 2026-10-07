@@ -32,6 +32,9 @@ const {
   mockDeleteUnlinkedReport,
   mockRequireUserOrRedirect,
   mockDbSelect,
+  mockFindReportByKeyDigest,
+  mockLockAndFindReportByKeyDigest,
+  mockCookieSet,
 } = vi.hoisted(() => ({
   mockInsertReportWithRetry: vi.fn(),
   mockFindPetByToken: vi.fn(),
@@ -48,6 +51,11 @@ const {
   mockDeleteUnlinkedReport: vi.fn(),
   mockRequireUserOrRedirect: vi.fn(),
   mockDbSelect: vi.fn(),
+  mockFindReportByKeyDigest: vi.fn(),
+  mockLockAndFindReportByKeyDigest: vi.fn(),
+  // The reporter-session cookie (mintFreshReporterSession): an anonymous
+  // replay must never set one.
+  mockCookieSet: vi.fn(),
 }));
 
 vi.mock("../../infrastructure/welfare-repository", () => {
@@ -62,6 +70,8 @@ vi.mock("../../infrastructure/welfare-repository", () => {
     findBridgedReportReplay = mockFindBridgedReportReplay;
     lockAndFindBridgedReportReplay = mockLockAndFindBridgedReportReplay;
     deleteUnlinkedReport = mockDeleteUnlinkedReport;
+    findReportByKeyDigest = mockFindReportByKeyDigest;
+    lockAndFindReportByKeyDigest = mockLockAndFindReportByKeyDigest;
   }
   return { WelfareRepository };
 });
@@ -186,7 +196,7 @@ vi.mock("next/headers", () => ({
     get: () => undefined,
     getAll: () => [],
     has: () => false,
-    set: () => undefined,
+    set: mockCookieSet,
     delete: () => undefined,
   }),
 }));
@@ -559,5 +569,128 @@ describe("createOrgWelfareReportAction — a concurrent twin filed it first", ()
     );
     expect(mockDeleteUnlinkedReport).toHaveBeenCalledWith("report-2");
     expect(mockOpenCase).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The report-level replay (plan A5f, migration 0289). An ANONYMOUS denuncia
+// about an unowned animal — no reporter, no pet, no bridge event — used to
+// file a second report and case on every retry. The key's digest is the only
+// scope an anonymous submitter has, so its replay must carry nothing.
+// ---------------------------------------------------------------------------
+
+describe("createWelfareReportAction — an anonymous retry lands on what it filed, and learns nothing", () => {
+  vi.setConfig({ testTimeout: 20_000 });
+
+  const VICTIM_KEY = "0f9e8d7c-6b5a-4f3e-8d2c-1b0a9f8e7d6c";
+  const OTHER_KEY = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+  const ORIGINAL = { reportId: "report-victim", referenceCode: "DEN-VICT-0001" };
+
+  /** The ledger knows exactly one filing: the victim's anonymous one. */
+  async function ledgerWithVictim() {
+    const { reportKeyDigest } = await import("../../domain/report-key-digest");
+    const victimDigest = reportKeyDigest(VICTIM_KEY, null);
+    mockFindReportByKeyDigest.mockImplementation(async (digest: string) =>
+      digest === victimDigest ? ORIGINAL : null,
+    );
+    return { reportKeyDigest, victimDigest };
+  }
+
+  function anonReport(key: string): FormData {
+    const fd = baseFormData("anonymous");
+    fd.set("clientIdempotencyKey", key);
+    return fd;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockInsertReportWithRetry.mockResolvedValue({ id: "report-2", referenceCode: "DEN-NEW-0002" });
+    mockFindPetByToken.mockResolvedValue(null);
+    mockFindReportByKeyDigest.mockResolvedValue(null);
+    mockLockAndFindReportByKeyDigest.mockResolvedValue(null);
+    mockOpenCase.mockResolvedValue({ id: "case-2", publicCode: "CASE-2" });
+    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({}));
+  });
+
+  it("same key: no second report, no second case, no session — and nothing of the original in the answer", async () => {
+    setUser(null);
+    const { victimDigest } = await ledgerWithVictim();
+
+    const { createWelfareReportAction } = await import("../../actions");
+    const state = await createWelfareReportAction({ error: null }, anonReport(VICTIM_KEY));
+
+    expect(mockFindReportByKeyDigest).toHaveBeenCalledWith(victimDigest);
+    expect(mockInsertReportWithRetry).not.toHaveBeenCalled();
+    expect(mockOpenCase).not.toHaveBeenCalled();
+    // No reporter session: the key alone does not open the denuncia.
+    expect(mockCookieSet).not.toHaveBeenCalled();
+    // The answer is a notice and no destination, carrying neither the
+    // original's id nor its reference code.
+    expect(state.redirectTo).toBeUndefined();
+    expect(state.error).toMatch(/ya había sido recibida/);
+    expect(JSON.stringify(state)).not.toContain(ORIGINAL.referenceCode);
+    expect(JSON.stringify(state)).not.toContain(ORIGINAL.reportId);
+  });
+
+  it("a different key files its own report and gets its own receipt", async () => {
+    setUser(null);
+    const { reportKeyDigest } = await ledgerWithVictim();
+
+    const { createWelfareReportAction } = await import("../../actions");
+    const state = await createWelfareReportAction({ error: null }, anonReport(OTHER_KEY));
+
+    expect(mockFindReportByKeyDigest).toHaveBeenCalledWith(reportKeyDigest(OTHER_KEY, null));
+    expect(mockInsertReportWithRetry).toHaveBeenCalledTimes(1);
+    expect(mockOpenCase).toHaveBeenCalledTimes(1);
+    expect(state.redirectTo).toBe("/denuncias/codigo/DEN-NEW-0002?nueva=1");
+    // The digest is stamped with the case, inside the write.
+    expect(mockLinkCase).toHaveBeenCalledWith(
+      "report-2",
+      "case-2",
+      {},
+      reportKeyDigest(OTHER_KEY, null),
+    );
+  });
+
+  it("a logged-in, non-anonymous person presenting an anonymous key reaches their OWN slot, not the anonymous one", async () => {
+    setUser({ id: "user-123" });
+    const { reportKeyDigest } = await ledgerWithVictim();
+
+    const fd = baseFormData("with_contact");
+    fd.set("reporterContactEmail", "reporter@example.com");
+    fd.set("clientIdempotencyKey", VICTIM_KEY);
+    const { createWelfareReportAction } = await import("../../actions");
+    const state = await createWelfareReportAction({ error: null }, fd);
+
+    expect(mockFindReportByKeyDigest).toHaveBeenCalledWith(reportKeyDigest(VICTIM_KEY, "user-123"));
+    // Filed as a new report of their own; the anonymous one never surfaced.
+    expect(mockInsertReportWithRetry).toHaveBeenCalledTimes(1);
+    expect(state).toEqual({ error: null, redirectTo: "/denuncias/mias" });
+  });
+
+  it("a concurrent anonymous twin: this submit's row goes, no session is minted, nothing of the original returns", async () => {
+    setUser(null);
+    // The pre-check missed (the twin had not committed); the write's claim found it.
+    mockLockAndFindReportByKeyDigest.mockResolvedValue(ORIGINAL);
+
+    const { createWelfareReportAction } = await import("../../actions");
+    const state = await createWelfareReportAction({ error: null }, anonReport(VICTIM_KEY));
+
+    expect(mockInsertReportWithRetry).toHaveBeenCalledTimes(1);
+    expect(mockOpenCase).not.toHaveBeenCalled();
+    expect(mockDeleteUnlinkedReport).toHaveBeenCalledWith("report-2");
+    expect(mockCookieSet).not.toHaveBeenCalled();
+    expect(state.redirectTo).toBeUndefined();
+    expect(state.error).toMatch(/ya había sido recibida/);
+    expect(JSON.stringify(state)).not.toContain(ORIGINAL.referenceCode);
+    // Not even this submit's own discarded code.
+    expect(JSON.stringify(state)).not.toContain("DEN-NEW-0002");
+  });
+
+  it("a filed anonymous report DOES mint its session — the guard above is the replay's, not the filing's", async () => {
+    setUser(null);
+    const { createWelfareReportAction } = await import("../../actions");
+    await createWelfareReportAction({ error: null }, anonReport(OTHER_KEY));
+    expect(mockCookieSet).toHaveBeenCalledTimes(1);
   });
 });

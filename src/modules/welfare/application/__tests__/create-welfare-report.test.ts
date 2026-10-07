@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
+import { REPORT_KEY_MIN_LENGTH, reportKeyDigest } from "../../domain/report-key-digest";
 import type { WelfareRepository } from "../../infrastructure/welfare-repository";
 import { createWelfareReport } from "../create-welfare-report";
 
@@ -62,10 +63,12 @@ function makeRepo(
   | "setFlagged"
   | "insertAudit"
   | "lockAndFindBridgedReportReplay"
+  | "lockAndFindReportByKeyDigest"
 > {
   return {
     insertAttachments: vi.fn().mockResolvedValue(undefined),
     lockAndFindBridgedReportReplay: vi.fn().mockResolvedValue(null),
+    lockAndFindReportByKeyDigest: vi.fn().mockResolvedValue(null),
     linkCase: vi.fn().mockResolvedValue(undefined),
     insertPetEvent: vi.fn().mockResolvedValue(undefined),
     insertPetEventIdempotent: vi.fn().mockResolvedValue({ wasNoop: false }),
@@ -81,6 +84,7 @@ function makeRepo(
     | "setFlagged"
     | "insertAudit"
     | "lockAndFindBridgedReportReplay"
+    | "lockAndFindReportByKeyDigest"
   >;
 }
 
@@ -166,7 +170,7 @@ describe("createWelfareReport — successful create (anon)", () => {
     if (!result.ok) return;
 
     expect(openCase).toHaveBeenCalledOnce();
-    expect(repo.linkCase).toHaveBeenCalledWith(RPT_ID, "case-001", expect.anything());
+    expect(repo.linkCase).toHaveBeenCalledWith(RPT_ID, "case-001", expect.anything(), null);
     expect(signal).toHaveBeenCalledOnce();
     expect(result.redirectTo).toBe("/denuncias/codigo/DEN-ABCD-12?nueva=1");
   });
@@ -320,7 +324,7 @@ describe("createWelfareReport — reference-code retry (spec: 5 attempts on 2350
     });
 
     // linkCase must use our pre-inserted reportId
-    expect(repo.linkCase).toHaveBeenCalledWith(RPT_ID, expect.any(String), expect.anything());
+    expect(repo.linkCase).toHaveBeenCalledWith(RPT_ID, expect.any(String), expect.anything(), null);
   });
 });
 
@@ -677,5 +681,115 @@ describe("createWelfareReport — a concurrent twin already filed it", () => {
     const deps = makeDeps();
     await createWelfareReport({ ...PET_INPUT, reporterUserId: null }, deps);
     expect(deps.repo.lockAndFindBridgedReportReplay).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The report-level ledger (plan A5f, migration 0289): every submit whose key is
+// long enough — anonymous ones and kinds with no bridge event included.
+// ---------------------------------------------------------------------------
+
+describe("reportKeyDigest — the stored and replayed form of a client key", () => {
+  const KEY = "3f1c2b9e-7a4d-4c1e-9b2a-5d6e7f8a9b0c";
+
+  it("is a 64-hex sha256, never the key itself", () => {
+    const digest = reportKeyDigest(KEY, null);
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(digest).not.toContain(KEY);
+  });
+
+  it("is deterministic per (scope, key) — the retry reaches the same slot", () => {
+    expect(reportKeyDigest(KEY, null)).toBe(reportKeyDigest(KEY, null));
+    expect(reportKeyDigest(KEY, "user-1")).toBe(reportKeyDigest(KEY, "user-1"));
+  });
+
+  it("scopes the slot: anonymous, one account and another account never share it", () => {
+    const anon = reportKeyDigest(KEY, null);
+    const userA = reportKeyDigest(KEY, "user-a");
+    const userB = reportKeyDigest(KEY, "user-b");
+    expect(new Set([anon, userA, userB]).size).toBe(3);
+  });
+
+  it("an org member's slot is per org, and never the member's citizen slot", () => {
+    const citizen = reportKeyDigest(KEY, "user-a");
+    const orgOne = reportKeyDigest(KEY, "user-a", "org-1");
+    const orgTwo = reportKeyDigest(KEY, "user-a", "org-2");
+    expect(new Set([citizen, orgOne, orgTwo]).size).toBe(3);
+    // An org never scopes an anonymous submit.
+    expect(reportKeyDigest(KEY, null, "org-1")).toBe(reportKeyDigest(KEY, null));
+  });
+
+  it("a key below the minimum length claims no slot", () => {
+    expect(reportKeyDigest("k".repeat(REPORT_KEY_MIN_LENGTH - 1), null)).toBeNull();
+    expect(reportKeyDigest("k".repeat(REPORT_KEY_MIN_LENGTH), null)).not.toBeNull();
+    expect(reportKeyDigest(null, null)).toBeNull();
+    expect(reportKeyDigest("", "user-1")).toBeNull();
+  });
+});
+
+describe("createWelfareReport — the report-level replay (A5f)", () => {
+  const KEY = "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+  // An anonymous report about an unowned animal: no pet, no bridge event —
+  // exactly what A5c could not replay.
+  const ANON_INPUT = { ...BASE_INPUT, clientIdempotencyKey: KEY as string | null };
+
+  it("no twin: claims the digest FIRST and stamps it with the case", async () => {
+    const deps = makeDeps();
+    const result = await createWelfareReport(ANON_INPUT, deps);
+
+    expect(result).toMatchObject({ ok: true, referenceCode: "DEN-ABCD-12" });
+    const digest = reportKeyDigest(KEY, null);
+    expect(deps.repo.lockAndFindReportByKeyDigest).toHaveBeenCalledWith(digest, {});
+    expect(deps.repo.linkCase).toHaveBeenCalledWith(RPT_ID, "case-001", {}, digest);
+  });
+
+  it("anonymous twin already filed it: writes nothing and answers NOTHING about the original", async () => {
+    const deps = makeDeps({
+      lockAndFindReportByKeyDigest: vi
+        .fn()
+        .mockResolvedValue({ reportId: "rpt-someone", referenceCode: "DEN-SECRET-01" }),
+    } as Partial<WelfareRepository>);
+
+    const result = await createWelfareReport(ANON_INPUT, deps);
+
+    expect(result).toEqual({ ok: true, anonymousReplay: true, discardInserted: true });
+    // Neither the original's id nor its reference code leaves the use-case.
+    expect(JSON.stringify(result)).not.toContain("rpt-someone");
+    expect(JSON.stringify(result)).not.toContain("DEN-SECRET-01");
+    expect(deps.openCase).not.toHaveBeenCalled();
+    expect(deps.repo.linkCase).not.toHaveBeenCalled();
+    expect(deps.signal).not.toHaveBeenCalled();
+    // The post-commit auto-flag does not run over a row that is about to go.
+    expect(deps.computeFlagReasons).not.toHaveBeenCalled();
+  });
+
+  it("identified twin already filed it (no bridge event kind): answers the original", async () => {
+    const deps = makeDeps({
+      lockAndFindReportByKeyDigest: vi
+        .fn()
+        .mockResolvedValue({ reportId: "rpt-mine", referenceCode: "DEN-MINE-01" }),
+    } as Partial<WelfareRepository>);
+
+    const result = await createWelfareReport({ ...ANON_INPUT, reporterUserId: "user-001" }, deps);
+
+    expect(result).toEqual({
+      ok: true,
+      reportId: "rpt-mine",
+      referenceCode: "DEN-MINE-01",
+      redirectTo: "/denuncias/mias",
+      discardInserted: true,
+    });
+    expect(deps.repo.lockAndFindReportByKeyDigest).toHaveBeenCalledWith(
+      reportKeyDigest(KEY, "user-001"),
+      {},
+    );
+    expect(deps.openCase).not.toHaveBeenCalled();
+  });
+
+  it("a short key claims no slot: files as before, stamps no digest", async () => {
+    const deps = makeDeps();
+    await createWelfareReport({ ...ANON_INPUT, clientIdempotencyKey: "short-key" }, deps);
+    expect(deps.repo.lockAndFindReportByKeyDigest).not.toHaveBeenCalled();
+    expect(deps.repo.linkCase).toHaveBeenCalledWith(RPT_ID, "case-001", {}, null);
   });
 });

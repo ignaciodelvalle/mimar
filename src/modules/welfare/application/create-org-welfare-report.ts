@@ -106,7 +106,7 @@ export type CreateOrgWelfareReportInput = {
   uploadedPaths: string[];
   orgMember: OrgMember;
   orgToken?: string;
-  /** Client-generated UUID for idempotency on the pet-event bridge inserts. */
+  /** Client-generated UUID: the bridge inserts' key and the report-level replay (0289). */
   clientIdempotencyKey: string | null;
 };
 
@@ -122,6 +122,7 @@ type Deps = {
     | "findOpenOtherWelfareCasesForPet"
     | "findInstitutionalAdmins"
     | "lockAndFindBridgedReportReplay"
+    | "lockAndFindReportByKeyDigest"
   >;
   /**
    * Opened INSIDE the write's transaction (plan A5c): outside it, the holder of
@@ -211,9 +212,14 @@ export async function createOrgWelfareReport(
   try {
     await transaction(async (tx) => {
       // 3·. A twin of this submit already filed it → write nothing (report-key-claim.ts).
-      await claimReportKey(
+      const keyDigest = await claimReportKey(
         repo,
-        { subjectPetId, clientIdempotencyKey, reporterUserId: orgMember.userId },
+        {
+          subjectPetId,
+          clientIdempotencyKey,
+          reporterUserId: orgMember.userId,
+          reporterOrganizationId: orgMember.orgId,
+        },
         tx,
       );
 
@@ -268,8 +274,13 @@ export async function createOrgWelfareReport(
         tx,
       );
 
-      // 3c. Link case
-      await repo.linkCase(reportId, caseRow.id, tx as Parameters<typeof repo.linkCase>[2]);
+      // 3c. Link case — and stamp the claimed key digest with it (0289).
+      await repo.linkCase(
+        reportId,
+        caseRow.id,
+        tx as Parameters<typeof repo.linkCase>[2],
+        keyDigest,
+      );
 
       // 3d. Pet-event bridge (registered_pet only; org reports always use role=witness/shelter)
       if (subjectKind === "registered_pet" && subjectPetId) {

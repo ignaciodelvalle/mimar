@@ -152,9 +152,22 @@ export class WelfareRepository {
   /**
    * Update the welfare_reports.case_id column to link a case.
    * Called after openCase() returns the new case row.
+   *
+   * `clientKeyDigest` (0289) is stamped in the SAME update: a committed row
+   * carries a digest only together with its case, so a report whose write
+   * failed can never answer a retry. Pass it only from inside the write
+   * transaction that claimed it (report-key-claim.ts).
    */
-  async linkCase(reportId: string, caseId: string, executor: DbOrTx = db): Promise<void> {
-    await executor.update(welfareReports).set({ caseId }).where(eq(welfareReports.id, reportId));
+  async linkCase(
+    reportId: string,
+    caseId: string,
+    executor: DbOrTx = db,
+    clientKeyDigest: string | null = null,
+  ): Promise<void> {
+    await executor
+      .update(welfareReports)
+      .set(clientKeyDigest ? { caseId, clientKeyDigest } : { caseId })
+      .where(eq(welfareReports.id, reportId));
   }
 
   /**
@@ -528,6 +541,44 @@ export class WelfareRepository {
       sql`SELECT pg_advisory_xact_lock(hashtext('welfare:' || ${reporterUserId} || ':' || ${clientIdempotencyKey}))`,
     );
     return this.findBridgedReportReplay(petId, clientIdempotencyKey, reporterUserId, executor);
+  }
+
+  /**
+   * The report filed under this client-key digest (0289, plan A5f) — the
+   * report-level ledger, for EVERY report that carried a key: anonymous ones,
+   * reports with no pet, kinds that write no bridge event. The scope (reporter
+   * or `anon`) is inside the digest (domain/report-key-digest.ts), so a key
+   * someone else used never answers this caller. The digest is written with
+   * case_id, so a match is always a filed report.
+   */
+  async findReportByKeyDigest(
+    clientKeyDigest: string,
+    executor: DbOrTx = db,
+  ): Promise<{ reportId: string; referenceCode: string } | null> {
+    const [row] = await executor
+      .select({ reportId: welfareReports.id, referenceCode: welfareReports.referenceCode })
+      .from(welfareReports)
+      .where(eq(welfareReports.clientKeyDigest, clientKeyDigest))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * The same question INSIDE the write transaction, under a lock on the digest
+   * — the answer to two copies of one submit in flight at once, as
+   * lockAndFindBridgedReportReplay is for the bridge. The second copy waits for
+   * the first to commit its case and digest, then finds it. Two different
+   * scopes or keys hash to different digests and never wait on each other.
+   * REQUIRES a transaction.
+   */
+  async lockAndFindReportByKeyDigest(
+    clientKeyDigest: string,
+    executor: DbOrTx,
+  ): Promise<{ reportId: string; referenceCode: string } | null> {
+    await executor.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('welfare-report-key:' || ${clientKeyDigest}))`,
+    );
+    return this.findReportByKeyDigest(clientKeyDigest, executor);
   }
 
   /**
