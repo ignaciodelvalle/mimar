@@ -41,6 +41,7 @@ import {
   OVER_CEILING_REPORT_DELIVERY,
   anonymousReportOverflowNotices,
 } from "@/lib/infra/anonymous-report-limits";
+import { summarizeDeadLetterError } from "@/lib/infra/dead-letter-error-summary";
 import { createNotification } from "@/lib/infra/notification-service";
 import { resolveOriginShelterOrgId } from "@/lib/infra/origin-shelter-alert";
 import { resolveLostPetAlertRecipients } from "@/lib/infra/pet-alert-recipients";
@@ -642,7 +643,9 @@ export async function reportFinderInPossessionAction(
       includeVets: isUrgent,
     });
   } catch (err) {
-    reportError("public-encontre/nearby-help", err);
+    // NEVER the raw error: a DrizzleQueryError's message carries the query's
+    // params, which here are the finder's coordinates.
+    reportError("public-encontre/nearby-help", new Error(summarizeDeadLetterError(err)));
   }
 
   return { ok: true, error: null, warning: photoWarning, nearbyHelp, urgent: isUrgent };

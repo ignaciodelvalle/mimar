@@ -302,6 +302,13 @@ vi.mock("@/db", () => ({
   attachments: {},
 }));
 
+// The plan-B lookup (P4) is its own use case with its own DB tests
+// (__tests__/found-animal-help-read.test.ts); here only its CALL is observed.
+const mockFindNearbyHelp = vi.fn(async (_input: unknown): Promise<unknown> => null);
+vi.mock("@/src/modules/organizations/application/find-nearby-help", () => ({
+  findNearbyHelp: (input: unknown) => mockFindNearbyHelp(input),
+}));
+
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal();
   return actual as object;
@@ -1057,7 +1064,13 @@ describe("reportFinderInPossessionAction — the animal's own ceiling (A03-2)", 
     );
 
     // The finder sees the normal success: no refusal, no "probá más tarde".
-    expect(accepted).toEqual({ ok: true, error: null, warning: null });
+    expect(accepted).toEqual({
+      ok: true,
+      error: null,
+      warning: null,
+      nearbyHelp: null,
+      urgent: false,
+    });
 
     // The spine still gets the report, contact and all.
     expect(capturedPetEventInsert).not.toBeNull();
@@ -1159,7 +1172,13 @@ describe("reportFinderInPossessionAction — the animal's own ceiling (A03-2)", 
         PREVIOUS_STATE,
         makeFormData({ ...FIELDS, photoNow: photo() }),
       );
-      expect(result, `report ${n}`).toEqual({ ok: true, error: null, warning: null });
+      expect(result, `report ${n}`).toEqual({
+        ok: true,
+        error: null,
+        warning: null,
+        nearbyHelp: null,
+        urgent: false,
+      });
       limiter.advance(61_000);
     }
     expect(mockUpload).toHaveBeenCalledTimes(30);
@@ -1180,6 +1199,8 @@ describe("reportFinderInPossessionAction — the animal's own ceiling (A03-2)", 
       error: null,
       warning:
         "El aviso fue registrado, pero la foto no se guardó porque llegaron muchos avisos sobre esta mascota en la última hora.",
+      nearbyHelp: null,
+      urgent: false,
     });
     expect(mockUpload).not.toHaveBeenCalled();
     expect(capturedAttachmentInsert).toBeNull();
@@ -1275,5 +1296,103 @@ describe("reportFinderInPossessionAction — the animal's own ceiling (A03-2)", 
     expect(mockEnforceRateLimit.mock.calls.map((call) => call[0])).toEqual([
       `finder_possession:${PUBLIC_TOKEN}`,
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan B (P4): looked up only AFTER the owner was notified, from the point the
+// finder placed, with vets only for an urgent condition — and never able to
+// turn a successful report into a failed one.
+// ---------------------------------------------------------------------------
+
+describe("reportFinderInPossessionAction — plan B (P4)", () => {
+  beforeEach(() => {
+    capturedNotificationRows = [];
+    idempotencyReturnEvent = false;
+    activeCaretakerPresent = false;
+    callOrder.length = 0;
+    callerAddress.value = "10.0.0.77";
+    mockEnforceRateLimit.mockResolvedValue(undefined);
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
+    mockFindNearbyHelp.mockReset();
+  });
+
+  it("runs after the owner's notification, with the placed point and vets for an urgent condition", async () => {
+    buildMockDb("lost", "evt-planb");
+    const help = { vets: [], receivers: [], fallback: { kind: "general" }, place: null };
+    let notifiedBeforeLookup = -1;
+    mockFindNearbyHelp.mockImplementation(async () => {
+      notifiedBeforeLookup = capturedNotificationRows.length;
+      return help;
+    });
+    const { reportFinderInPossessionAction } = await import(
+      "@/app/(public)/p/[publicToken]/encontre/action"
+    );
+    const result = await reportFinderInPossessionAction(
+      PUBLIC_TOKEN,
+      PREVIOUS_STATE,
+      makeFormData({
+        ...BASE_FIELDS,
+        canKeepIndefinite: "true",
+        petCondition: "necesita_vet_urgente",
+      }),
+    );
+    expect(result).toMatchObject({ ok: true, nearbyHelp: help, urgent: true });
+    expect(mockFindNearbyHelp).toHaveBeenCalledTimes(1);
+    expect(mockFindNearbyHelp).toHaveBeenCalledWith({
+      kind: "point",
+      point: { lat: -34.92, lng: -57.95 },
+      includeVets: true,
+    });
+    expect(notifiedBeforeLookup).toBeGreaterThan(0);
+  });
+
+  it("asks for no vets when the animal is fine", async () => {
+    buildMockDb("lost", "evt-planb-2");
+    const { reportFinderInPossessionAction } = await import(
+      "@/app/(public)/p/[publicToken]/encontre/action"
+    );
+    await reportFinderInPossessionAction(
+      PUBLIC_TOKEN,
+      PREVIOUS_STATE,
+      makeFormData({ ...BASE_FIELDS, canKeepIndefinite: "true" }),
+    );
+    expect(mockFindNearbyHelp).toHaveBeenCalledWith(
+      expect.objectContaining({ includeVets: false }),
+    );
+  });
+
+  it("a failed lookup still returns the report as accepted", async () => {
+    buildMockDb("lost", "evt-planb-3");
+    const { DrizzleQueryError } = await import("drizzle-orm/errors");
+    const cause = Object.assign(new Error("canceling statement due to statement timeout"), {
+      code: "57014",
+    });
+    mockFindNearbyHelp.mockRejectedValue(
+      new DrizzleQueryError("select … where distance <= $3", [-34.92, -57.95, 50], cause),
+    );
+    const logged: string[] = [];
+    const spies = (["log", "info", "warn", "error"] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation((...args: unknown[]) => {
+        logged.push(args.map((a) => (a instanceof Error ? `${a.message}` : String(a))).join(" "));
+      }),
+    );
+    try {
+      const { reportFinderInPossessionAction } = await import(
+        "@/app/(public)/p/[publicToken]/encontre/action"
+      );
+      const result = await reportFinderInPossessionAction(
+        PUBLIC_TOKEN,
+        PREVIOUS_STATE,
+        makeFormData({ ...BASE_FIELDS, canKeepIndefinite: "true" }),
+      );
+      expect(result).toMatchObject({ ok: true, error: null, nearbyHelp: null });
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+    // The failure IS reported (positive control: its SQLSTATE), but never with
+    // the finder's point in it.
+    expect(logged.join("\n")).toMatch(/57014/);
+    expect(logged.join("\n")).not.toMatch(/34\.92|57\.95/);
   });
 });
