@@ -356,6 +356,8 @@ vi.mock("@/lib/infra/case-helpers", () => ({
 }));
 
 vi.mock("@/src/modules/surveillance/application/report-bite", () => ({
+  OBSERVATION_OPEN_ERROR:
+    "Esta mascota ya está en observación antirrábica por otra mordedura activa.",
   reportBite: async (input: Record<string, unknown>, deps: Record<string, unknown>) => {
     control.writes.push({ kind: "bite", input });
     control.biteDeps.push(deps);
@@ -2187,6 +2189,28 @@ describe("POST .../events — mordedura, y la jurisdiccion es la del hecho", () 
     const res = await call(A_BITE);
     expect(res.status).toBe(201);
     await expect(res.json()).resolves.toMatchObject({ wasDuplicate: true });
+  });
+
+  // Plan A5c: the open-observation refusal moved into the writer, after its
+  // replay check. It is a fact about the animal — 409, nobody paged — and a
+  // genuine failure keeps its 500 and its report.
+  it("answers 409 - not 500 - when the writer refuses an already-open observation", async () => {
+    const { OBSERVATION_OPEN_ERROR } = await import(
+      "@/src/modules/surveillance/application/report-bite"
+    );
+    control.biteResult = () => ({ ok: false, error: OBSERVATION_OPEN_ERROR });
+    const res = await call(A_BITE);
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: "event_not_allowed" });
+    expect(control.reported).toEqual([]);
+  });
+
+  it("keeps 500 + a report for a writer failure that is not the guard", async () => {
+    control.biteResult = () => ({ ok: false, error: "No se pudo reportar la mordedura: boom" });
+    const res = await call(A_BITE);
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: "event_failed" });
+    expect(control.reported).toEqual(["api-v1-event"]);
   });
 
   it("refuses a victim kind and a severity the contract does not name", async () => {

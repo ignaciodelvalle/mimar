@@ -71,7 +71,10 @@ import { replaceMicrochipForUser } from "@/src/modules/pets/application/microchi
 import { recordPregnancyEndedWriter } from "@/src/modules/pets/application/pregnancy/record-pregnancy-ended";
 import { recordPregnancyStartedWriter } from "@/src/modules/pets/application/pregnancy/record-pregnancy-started";
 import { createTattooForUser } from "@/src/modules/pets/application/tattoo/create-tattoo";
-import { reportBite } from "@/src/modules/surveillance/application/report-bite";
+import {
+  OBSERVATION_OPEN_ERROR,
+  reportBite,
+} from "@/src/modules/surveillance/application/report-bite";
 import { RABIES_OBSERVATION_DAYS } from "@/src/modules/surveillance/domain/rabies-observation";
 import { SurveillanceRepository } from "@/src/modules/surveillance/infrastructure/surveillance-repository";
 import type { EventRecordedV1 } from "@dim/contract/api";
@@ -695,6 +698,13 @@ export async function appendBite(
     },
   );
 
+  // The open-observation refusal is a fact about the ANIMAL, not a fault: a 409
+  // the app can act on, and nothing paged. It runs AFTER the replay check
+  // (plan A5c), so a retry of the bite that opened the observation never lands
+  // here — it answers 201 with `wasDuplicate: true`.
+  if (!result.ok && result.error === OBSERVATION_OPEN_ERROR) {
+    return apiV1Error("event_not_allowed", 409);
+  }
   if (!result.ok) {
     reportError("api-v1-event", new Error(result.error), { userId: ctx.userId });
     return apiV1Error("event_failed", 500);
