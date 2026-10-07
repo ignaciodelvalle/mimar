@@ -123,6 +123,8 @@ describe("the catalogue's chrome and photos", () => {
     await screen.findByText("Lola");
     const photo = screen.getByTestId("adoption-thumb", { includeHiddenElements: true });
     expect(photo.props.source).toEqual({ uri: "https://cdn.test/lola.jpg" });
+    // Decoded at the thumbnail's size, not the upload's (Android).
+    expect(photo.props.resizeMethod).toBe("resize");
     expect(
       screen.queryByTestId("adoption-thumb-fallback", { includeHiddenElements: true }),
     ).toBeNull();

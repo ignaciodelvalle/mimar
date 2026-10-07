@@ -88,6 +88,9 @@ function Photo({
       testID={testID}
       source={source}
       resizeMode="cover"
+      // Android otherwise decodes the full-size upload for a 72dp thumbnail;
+      // on a low-memory phone a page of cards is a page of full photos in RAM.
+      resizeMethod="resize"
       style={StyleSheet.absoluteFill}
       accessibilityIgnoresInvertColors
       {...(label === null
