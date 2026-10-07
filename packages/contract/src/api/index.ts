@@ -185,6 +185,12 @@ export {
   type NotificationPetV1,
 } from "./my-notifications.ts";
 export {
+  MY_UNREAD_NOTIFICATIONS_PAYLOAD_VERSION,
+  MY_UNREAD_NOTIFICATIONS_STALE_AFTER_MS,
+  type MyUnreadNotificationsV1,
+  notificationBadgeLabel,
+} from "./my-notifications-unread-count.ts";
+export {
   NOTIFICATION_TARGET_OUTCOMES,
   NOTIFICATION_TARGET_PAYLOAD_VERSION,
   NOTIFICATION_TARGET_STALE_AFTER_MS,
