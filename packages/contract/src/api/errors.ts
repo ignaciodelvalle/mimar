@@ -463,6 +463,18 @@
  *                         NOT land here — the writer asks the ledger for the
  *                         key before it asks the animal for a window.
  *
+ * - `bite_observation_open`
+ *                       — a bite reported on an animal whose rabies
+ *                         observation is still open (an expired-unclosed one
+ *                         included: unresolved, not over). 409. The next move is
+ *                         to WAIT for that observation's close — a second
+ *                         observation on top of it would bury the first. NOT
+ *                         `event_not_allowed`, whose copy says the animal is
+ *                         deceased. A retry of the bite that OPENED the
+ *                         observation does not land here: the writer asks the
+ *                         ledger for the key first (plan A5c) and answers 201
+ *                         with `wasDuplicate: true`.
+ *
  * - `event_failed`      — the append itself failed. Same contract as
  *                         `amend_failed`: a client may retry ONCE with the SAME
  *                         `Idempotency-Key`, and if the first attempt had in fact
@@ -1287,6 +1299,7 @@ export const API_V1_ERROR_CODES = [
   "checkin_not_adopted",
   "checkin_not_adopter",
   "checkin_no_open_window",
+  "bite_observation_open",
   "event_failed",
   "lost_already",
   "pet_not_lost",

@@ -221,6 +221,10 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
       return "Esta mascota no tiene una adopción registrada en miMAR, así que no hay un refugio al que enviarle un check-in.";
     case "checkin_not_adopter":
       return "Solo el adoptante registrado puede enviar el check-in de esta mascota.";
+    // A bite on an animal already in observation: the next move is to wait for
+    // that observation's close, and the sentence says so.
+    case "bite_observation_open":
+      return "Ya está en observación antirrábica por otra mordedura; esperá su cierre.";
     case "checkin_no_open_window":
       return "Esta mascota no tiene un check-in post-adopción pendiente en este momento. Si el refugio te pide otro seguimiento más adelante, te vamos a avisar.";
     case "event_date_future":

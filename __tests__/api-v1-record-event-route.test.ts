@@ -2201,7 +2201,8 @@ describe("POST .../events — mordedura, y la jurisdiccion es la del hecho", () 
     control.biteResult = () => ({ ok: false, error: OBSERVATION_OPEN_ERROR });
     const res = await call(A_BITE);
     expect(res.status).toBe(409);
-    await expect(res.json()).resolves.toEqual({ error: "event_not_allowed" });
+    // Its own code: `event_not_allowed` reads "registrada como fallecida" on the app.
+    await expect(res.json()).resolves.toEqual({ error: "bite_observation_open" });
     expect(control.reported).toEqual([]);
   });
 
