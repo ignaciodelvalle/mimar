@@ -134,6 +134,11 @@ virtualStoreDirMaxLength: 60
 # dentro de la herramienta que compila cada test. `~` toma el parche que cierra
 # el aviso y nada mas. Medido: el arbol tiene UNA sola copia, 8.0.16.
 #
+# 2026-10-07: el piso sube a `~8.3.2` como bump de minor deliberado y separado
+# (integration/deps-minor), no como arreglo de seguridad. El `~` se queda por la
+# misma razon: cada minor de vite entra con su propio commit. Medido: una sola
+# copia, 8.3.3.
+#
 # CORRECCION A LO QUE AFIRMABA ESTE MISMO ARCHIVO, que es la parte que importa
 # para la proxima vez: decia que el arreglo llegaba con el bump de vitest del
 # PR #790, "que es quien fija el rango". Las dos mitades eran falsas. Vitest
