@@ -297,7 +297,6 @@ export function TransferDetailScreen({
         onRejectReason={setRejectReason}
         onRun={runBuilt}
       />
-
     </Screen>
   );
 }
