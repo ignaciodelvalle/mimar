@@ -29,7 +29,9 @@
  *       Prints the per-pair counts before and after.
  *   ... --env-file <path> --allow-remote
  *       against another database, on purpose. A non-local host is refused
- *       without --allow-remote, in both modes. NOT against staging until the
+ *       without --allow-remote, in both modes; for --apply "local" means the
+ *       Supabase CLI stack only (loopback, port 54322), never `db` or
+ *       `0.0.0.0` (scripts/_db-target.ts, hazard 3). NOT against staging until the
  *       PO asks for it.
  *
  * RE-RUN IT AFTER EVERY PROJECTION REBUILD, after the name pass: a rebuild
@@ -48,7 +50,13 @@ import type {
   ReadRunner,
 } from "@/lib/place/event-places-coordinate-pass";
 
-import { DEFAULT_LOCAL_URL, describeTarget, remoteSkipReason } from "./_db-target";
+import {
+  DEFAULT_LOCAL_URL,
+  SUPABASE_CLI_DB_PORT,
+  describeTarget,
+  isLocalWriterTarget,
+  remoteSkipReason,
+} from "./_db-target";
 
 const LABEL = "place-resolve-event-places-by-coordinates";
 
@@ -71,9 +79,15 @@ export function refusal(
   if (argv.includes("--apply") && argv.includes("--dry-run")) {
     return "--apply and --dry-run are exclusive";
   }
-  const reason = remoteSkipReason(describeTarget(rawUrl), allowRemote);
-  const verb = argv.includes("--apply") ? "write" : "read";
-  return reason === null ? null : `${reason} Pass --allow-remote to ${verb} it on purpose.`;
+  const target = describeTarget(rawUrl);
+  if (argv.includes("--apply")) {
+    // A writer's "local" is the Supabase CLI stack only (_db-target.ts hazard
+    // 3): never `db`, `0.0.0.0` or another port without --allow-remote.
+    if (allowRemote || isLocalWriterTarget(target)) return null;
+    return `${target.label} is not the local Supabase stack (loopback on port ${SUPABASE_CLI_DB_PORT}). Pass --allow-remote to write it on purpose.`;
+  }
+  const reason = remoteSkipReason(target, allowRemote);
+  return reason === null ? null : `${reason} Pass --allow-remote to read it on purpose.`;
 }
 
 async function main(): Promise<void> {
