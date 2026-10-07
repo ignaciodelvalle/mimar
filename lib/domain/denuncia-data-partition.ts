@@ -95,7 +95,8 @@ export type DenunciaColumn = {
  *
  * Note what is NOT here because it does not exist: `welfare_reports` has no
  * reporter NAME and no reporter ADDRESS column. Reporter identity is a user FK,
- * an org FK and two contact strings — nothing else structured. Everything else
+ * an org FK, two contact strings and a one-way digest of the submit's client
+ * key (0289) — nothing else structured. Everything else
  * identifying about the reporter lives in free text (see FREE TEXT above).
  */
 export const REPORTER_IDENTITY_COLUMNS: readonly DenunciaColumn[] = [
@@ -103,6 +104,11 @@ export const REPORTER_IDENTITY_COLUMNS: readonly DenunciaColumn[] = [
   { property: "reporterOrganizationId", column: "reporter_organization_id" },
   { property: "reporterContactEmail", column: "reporter_contact_email" },
   { property: "reporterContactPhone", column: "reporter_contact_phone" },
+  // The digest of the submit's client key (0289, plan A5f): a handle on WHO
+  // submitted — what lets a retry land on this report — never on what was
+  // alleged. One-way and scope-salted, but it is still about the submitter, so
+  // it travels and is purged with this side.
+  { property: "clientKeyDigest", column: "client_key_digest" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -316,6 +322,7 @@ export const REPORTER_IDENTITY_PURGE_PLAN: readonly PurgeAction[] = [
   { property: "reporterOrganizationId", column: "reporter_organization_id", action: "null" },
   { property: "reporterContactEmail", column: "reporter_contact_email", action: "null" },
   { property: "reporterContactPhone", column: "reporter_contact_phone", action: "null" },
+  { property: "clientKeyDigest", column: "client_key_digest", action: "null" },
 ] as const;
 
 /**

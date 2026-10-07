@@ -129,6 +129,7 @@ export const DENUNCIA_REPORTER_IDENTITY_SELECT = {
   reporterOrganizationId: welfareReports.reporterOrganizationId,
   reporterContactEmail: welfareReports.reporterContactEmail,
   reporterContactPhone: welfareReports.reporterContactPhone,
+  clientKeyDigest: welfareReports.clientKeyDigest,
 } as const;
 
 /** Row type returned by `DENUNCIA_CONTENT_SELECT`. */
