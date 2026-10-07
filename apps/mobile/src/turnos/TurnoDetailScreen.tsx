@@ -296,9 +296,9 @@ export function TurnoDetailScreen({ appointmentToken }: { appointmentToken: stri
 /**
  * The status Callout: its tone, and the sentence under the status label.
  *
- * `cancelled_by_owner` STEPS ASIDE while a notice is up, because the notice is
- * the same fact said in the frame after the tap ("Cancelaste el turno…"), and
- * two boxes saying it once each is one too many.
+ * `cancelled_by_owner` DROPS ITS SENTENCE while a notice is up, because the
+ * notice says the same fact in the frame after the tap ("Cancelaste el
+ * turno…"). The status label stays: the screen always names the state.
  */
 function statusCallout(
   appointment: MyAppointmentV1,
@@ -314,9 +314,10 @@ function statusCallout(
         body: `Asististe a este turno. El registro médico quedó guardado en la libreta de ${appointment.pet.name}.`,
       };
     case "cancelled_by_owner":
-      return noticeShown
-        ? null
-        : { tone: "neutral", body: "Cancelaste este turno y el horario quedó liberado." };
+      return {
+        tone: "neutral",
+        body: noticeShown ? null : "Cancelaste este turno y el horario quedó liberado.",
+      };
     case "cancelled_by_org":
       return {
         tone: "warn",

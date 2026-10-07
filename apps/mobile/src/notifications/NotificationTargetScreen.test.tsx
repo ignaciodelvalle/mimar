@@ -284,6 +284,29 @@ describe("inboxDetailFromParams", () => {
     });
   });
 
+  it("survives '&', '+', '%' and accents in the label and the pet's name", () => {
+    const route = notificationDetailRoute({
+      id: ID,
+      notificationType: "pet_sighting",
+      title: "x",
+      cta: { label: "Ver 100% + más & mapa", route: null },
+      pet: { publicToken: "DIM-PAMP-0001", name: "Ñata & Co+" },
+      petLinkAvailable: true,
+    });
+    const query = route.split("?")[1] ?? "";
+    // Expo Router decodes each value with `decodeURIComponent`, as this does.
+    const params = Object.fromEntries(
+      query.split("&").map((pair) => {
+        const [key = "", value = ""] = pair.split("=");
+        return [key, decodeURIComponent(value)];
+      }),
+    );
+    expect(inboxDetailFromParams(params)).toEqual({
+      actionLabel: "Ver 100% + más & mapa",
+      pet: { publicToken: "DIM-PAMP-0001", name: "Ñata & Co+" },
+    });
+  });
+
   it("is null without the inbox origin — a push tap keeps resolving and replacing", () => {
     expect(inboxDetailFromParams({})).toBeNull();
     expect(inboxDetailFromParams({ origen: "push", accion: "Ver" })).toBeNull();
@@ -369,6 +392,27 @@ describe("NotificationTargetScreen — the inbox's detail", () => {
     await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
     expect(mockSend.mock.calls[0]?.[1]).toEqual({ command: "archive", notificationId: ID });
     await waitFor(() => expect(toInbox).toHaveBeenCalled());
+  });
+
+  it("keeps Archivar and the pet link reachable when the destination cannot be read", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "archive", changed: true, unreadCount: 0 },
+    });
+    const toInbox = jest.fn();
+    renderDetail({ actionLabel: "Ver detalle", pet: PAMPA }, { onOpenInbox: toInbox });
+    expect(await screen.findByText("Ver Pampa")).toBeTruthy();
+    fireEvent.press(screen.getByText("Archivar"));
+    fireEvent.press(screen.getByText("Archivar notificación"));
+    await waitFor(() => expect(toInbox).toHaveBeenCalled());
+  });
+
+  it("offers no inbox rows on a failed push tap", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    renderScreen({});
+    await screen.findByText("Ir a notificaciones");
+    expect(screen.queryByText("Archivar")).toBeNull();
   });
 
   it("backs out of the archive confirmation without writing", async () => {

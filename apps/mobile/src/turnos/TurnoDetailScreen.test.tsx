@@ -318,3 +318,29 @@ describe("every action stays reachable", () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
   });
 });
+
+describe("after cancelling", () => {
+  it("still names the status while the notice says what just happened", async () => {
+    readsBack(anAppointment());
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "cancel", changed: true, appointmentToken: TOKEN },
+    });
+    render(<TurnoDetailScreen appointmentToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Cancelar el turno"));
+    readsBack(
+      anAppointment({
+        status: "cancelled_by_owner",
+        section: "cancelled",
+        capabilities: { canCancel: false, canCheckIn: false },
+      }),
+    );
+    fireEvent.press(screen.getByText("Confirmar cancelación"));
+    await waitFor(() =>
+      expect(screen.getByText("Cancelaste el turno y el horario quedó liberado.")).toBeTruthy(),
+    );
+    expect(screen.getByText("Cancelado por vos")).toBeTruthy();
+    // The sentence is said once, by the notice.
+    expect(screen.queryByText("Cancelaste este turno y el horario quedó liberado.")).toBeNull();
+  });
+});

@@ -144,6 +144,18 @@ export function NotificationTargetScreen({
           message={state.message}
           onRetry={state.retry ? () => void load() : undefined}
         />
+        {/* OPENED FROM THE INBOX, THE ROW'S OWN ACTS SURVIVE A FAILED READ. They
+            used to sit on the row itself; a notification whose destination
+            cannot be resolved must still be archivable, or it stays in the
+            inbox forever. Both need only the id and what the row handed over. */}
+        {inbox !== null && (
+          <InboxRows
+            notificationId={notificationId}
+            pet={inbox.pet}
+            onOpenRoute={onOpenRoute ?? onReplace}
+            onArchived={onOpenInbox}
+          />
+        )}
         <SecondaryButton label="Ir a notificaciones" onPress={onOpenInbox} />
       </Screen>
     );
@@ -230,29 +242,7 @@ function InboxDetailView({
   onOpenExternal: (url: string) => void;
   onArchived: () => void;
 }) {
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
-  const [archiving, setArchiving] = useState(false);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
-
-  const archive = useCallback(async () => {
-    const command = buildArchive(notificationId);
-    if (!command.ok) {
-      setArchiveError(command.message);
-      return;
-    }
-    setArchiveError(null);
-    setArchiving(true);
-    const result = await sendNotificationCommand(sessionPort, command.input);
-    setArchiving(false);
-    if (result.outcome !== "ok") {
-      setArchiveError(apiFailureMessage(result) ?? "No pudimos archivar esta notificación.");
-      return;
-    }
-    onArchived();
-  }, [notificationId, onArchived]);
-
   const primary = detailPrimary(step, target, inbox);
-  const pet = inbox.pet;
 
   return (
     <Screen>
@@ -285,6 +275,51 @@ function InboxDetailView({
         />
       )}
 
+      <InboxRows
+        notificationId={notificationId}
+        pet={inbox.pet}
+        onOpenRoute={onOpenRoute}
+        onArchived={onArchived}
+      />
+    </Screen>
+  );
+}
+
+/** "Ver {nombre}" and "Archivar" (with its confirmation): the rows under the detail. */
+function InboxRows({
+  notificationId,
+  pet,
+  onOpenRoute,
+  onArchived,
+}: {
+  notificationId: string;
+  pet: InboxDetail["pet"];
+  onOpenRoute: (route: string) => void;
+  onArchived: () => void;
+}) {
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  const archive = useCallback(async () => {
+    const command = buildArchive(notificationId);
+    if (!command.ok) {
+      setArchiveError(command.message);
+      return;
+    }
+    setArchiveError(null);
+    setArchiving(true);
+    const result = await sendNotificationCommand(sessionPort, command.input);
+    setArchiving(false);
+    if (result.outcome !== "ok") {
+      setArchiveError(apiFailureMessage(result) ?? "No pudimos archivar esta notificación.");
+      return;
+    }
+    onArchived();
+  }, [notificationId, onArchived]);
+
+  return (
+    <>
       <View style={styles.rows}>
         {pet !== null && (
           // THROUGH `credentialRoute`, never a template literal — see the
@@ -328,7 +363,7 @@ function InboxDetailView({
           <Body>{archiveError}</Body>
         </Callout>
       )}
-    </Screen>
+    </>
   );
 }
 
