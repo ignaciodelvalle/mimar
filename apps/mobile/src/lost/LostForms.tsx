@@ -93,12 +93,30 @@ export function MarkLostForm({
     const built = buildMarkLost(draft);
     if (!built.ok) {
       setMessage(built.message);
+      revealDescription();
       return;
     }
     setMessage(null);
     // NO KEY. `mark_lost` is idempotent on the state — the server refuses an
     // animal already lost — so a header here would be a guarantee nobody has.
-    await onRun(built.input, null);
+    const landed = await onRun(built.input, null);
+    if (!landed) revealDescription();
+  }
+
+  // A REFUSAL NEVER POINTS AT A FOLDED FIELD (custody polish review). When the
+  // check fails — here or on the server, which validates the microchip's
+  // format — and anything was typed under "Cómo reconocerla", the fold opens so
+  // "Revisá los datos" is read next to what it may be about.
+  function revealDescription() {
+    const described = [
+      draft.color,
+      draft.distinguishingFeatures,
+      draft.accessoriesWhenLost,
+      draft.behaviorNotes,
+      draft.lastSeenContext,
+      draft.microchipId,
+    ].some((value) => value.trim() !== "");
+    if (described) setDescribeOpen(true);
   }
 
   return (

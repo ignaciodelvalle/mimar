@@ -181,7 +181,7 @@ export function LostScreen({ publicToken }: { publicToken: string }) {
       if (result.outcome !== "ok") {
         hapticError();
         setError(apiFailureMessage(result) ?? "No pudimos leer el modo perdida.");
-        return;
+        return false;
       }
       // The haptic tracks `changed` the way the copy does: a replay that
       // changed nothing gets the warn sentence and NO success buzz — a buzz
@@ -199,9 +199,38 @@ export function LostScreen({ publicToken }: { publicToken: string }) {
       // that notice behind a spinner, and a re-read that then failed would
       // delete the search along with the confirmation of their own write.
       await load("refresh");
+      return true;
     },
     [load, petSex, publicToken],
   );
+
+  const banners = (
+    <>
+      {/* The failed RE-read, over the search it could not replace (S-2). */}
+      {state.phase === "ready" && state.staleFailure !== null ? (
+        <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
+      ) : null}
+
+      {notice === null ? null : (
+        <Callout tone={notice.tone} title={notice.tone === "ok" ? "Listo" : "Sin cambios"}>
+          <Body>{notice.message}</Body>
+        </Callout>
+      )}
+
+      {error === null ? null : (
+        <Callout tone="err" title="No se pudo">
+          <Body>{error}</Body>
+        </Callout>
+      )}
+    </>
+  );
+  // IN PERDIDA, NOTHING PUSHES THE TWO ACTS DOWN (custody polish review): a
+  // stale banner, a "Listo" or a refusal is drawn right under "Compartir" and
+  // "Marcar como encontrada" instead of above them, so the acts stay on the
+  // first screen at font scale 1.3 whatever was said last. Everywhere else the
+  // banners keep their place at the top.
+  const bannersBelowActions =
+    state.phase === "ready" && pane === "overview" && state.view.status === "lost";
 
   return (
     <Screen keyboardAvoiding>
@@ -221,25 +250,11 @@ export function LostScreen({ publicToken }: { publicToken: string }) {
         </>
       ) : null}
 
-      {/* The failed RE-read, over the search it could not replace (S-2). */}
-      {state.phase === "ready" && state.staleFailure !== null ? (
-        <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
-      ) : null}
-
-      {notice === null ? null : (
-        <Callout tone={notice.tone} title={notice.tone === "ok" ? "Listo" : "Sin cambios"}>
-          <Body>{notice.message}</Body>
-        </Callout>
-      )}
-
-      {error === null ? null : (
-        <Callout tone="err" title="No se pudo">
-          <Body>{error}</Body>
-        </Callout>
-      )}
+      {bannersBelowActions ? null : banners}
 
       {state.phase === "ready" && pane === "overview" ? (
         <LostOverview
+          banners={bannersBelowActions ? banners : null}
           view={state.view}
           busy={busy}
           onMarkLost={() => setPane("mark-lost")}

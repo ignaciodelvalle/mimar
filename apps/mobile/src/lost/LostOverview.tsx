@@ -21,7 +21,7 @@
 // screen's header says why), marcar encontrada keeps its two steps, and every
 // command is built and sent exactly as before.
 
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import type { LostFeedItemV1, PetLostV1 } from "@dim/contract/api";
@@ -112,6 +112,7 @@ function primaryAct(view: PetLostV1): PrimaryAct {
 }
 
 export function LostOverview({
+  banners,
   view,
   busy,
   onMarkLost,
@@ -120,6 +121,8 @@ export function LostOverview({
   onRun,
   onReload,
 }: {
+  /** The screen's stale/notice/error callouts, when they belong UNDER the acts. */
+  banners: ReactNode;
   view: PetLostV1;
   busy: boolean;
   onMarkLost: () => void;
@@ -156,6 +159,8 @@ export function LostOverview({
         onReport={onReport}
         onRun={onRun}
       />
+
+      {banners}
 
       <CaseDetail view={view} />
 
