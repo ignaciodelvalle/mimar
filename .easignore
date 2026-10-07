@@ -105,6 +105,7 @@ supabase/snippets/Untitled*.sql
 
 # agent/script scratch output, and the root session scratch (build artifacts, QA state)
 tmp/
+.tmp-*/
 /scratchpad/
 
 # agent tool caches
