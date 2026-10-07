@@ -225,6 +225,10 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
     // that observation's close, and the sentence says so.
     case "bite_observation_open":
       return "Ya está en observación antirrábica por otra mordedura; esperá su cierre.";
+    // The key belongs to someone else's write: retrying with it can never
+    // succeed, so the sentence sends the person back to the start (a new key).
+    case "idempotency_key_taken":
+      return "Ese pedido ya se usó para otra acción; volvé a intentarlo desde el principio.";
     case "checkin_no_open_window":
       return "Esta mascota no tiene un check-in post-adopción pendiente en este momento. Si el refugio te pide otro seguimiento más adelante, te vamos a avisar.";
     case "event_date_future":

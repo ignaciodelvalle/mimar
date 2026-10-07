@@ -73,6 +73,7 @@ import { recordPregnancyEndedWriter } from "@/src/modules/pets/application/pregn
 import { recordPregnancyStartedWriter } from "@/src/modules/pets/application/pregnancy/record-pregnancy-started";
 import { createTattooForUser } from "@/src/modules/pets/application/tattoo/create-tattoo";
 import {
+  KEY_TAKEN_ERROR,
   OBSERVATION_OPEN_ERROR,
   reportBite,
 } from "@/src/modules/surveillance/application/report-bite";
@@ -708,6 +709,12 @@ export async function appendBite(
   // never lands here — it answers 201 with `wasDuplicate: true`.
   if (!result.ok && result.error === OBSERVATION_OPEN_ERROR) {
     return apiV1Error("bite_observation_open", 409);
+  }
+  // Another actor's key (the writer rolled it back): its own 409, nothing
+  // paged. `event_failed` would tell the app to retry with the SAME key — the
+  // one move that cannot succeed.
+  if (!result.ok && result.error === KEY_TAKEN_ERROR) {
+    return apiV1Error("idempotency_key_taken", 409);
   }
   if (!result.ok) {
     reportError("api-v1-event", new Error(result.error), { userId: ctx.userId });

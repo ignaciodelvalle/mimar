@@ -474,6 +474,16 @@
  *                         observation does not land here: the writer asks the
  *                         ledger for the key first (plan A5c) and answers 201
  *                         with `wasDuplicate: true`.
+ * - `idempotency_key_taken`
+ *                       — the `Idempotency-Key` was already used on this animal
+ *                         by ANOTHER actor. 409. The replay is scoped to whoever
+ *                         wrote it, so this is not the caller's request, and the
+ *                         write is rolled back (a committed case with no
+ *                         incident used to block the animal). NOT `event_failed`,
+ *                         whose contract is "retry ONCE with the SAME key" — the
+ *                         one move that can never succeed here and would loop.
+ *                         The next move is to start the action over, which mints
+ *                         a fresh key.
  *
  * - `event_failed`      — the append itself failed. Same contract as
  *                         `amend_failed`: a client may retry ONCE with the SAME
@@ -1300,6 +1310,7 @@ export const API_V1_ERROR_CODES = [
   "checkin_not_adopter",
   "checkin_no_open_window",
   "bite_observation_open",
+  "idempotency_key_taken",
   "event_failed",
   "lost_already",
   "pet_not_lost",

@@ -358,6 +358,8 @@ vi.mock("@/lib/infra/case-helpers", () => ({
 vi.mock("@/src/modules/surveillance/application/report-bite", () => ({
   OBSERVATION_OPEN_ERROR:
     "Esta mascota ya está en observación antirrábica por otra mordedura activa.",
+  KEY_TAKEN_ERROR:
+    "No se pudo registrar la mordedura: el envío reutilizó una clave ajena. Volvé a abrir el formulario y envialo de nuevo.",
   reportBite: async (input: Record<string, unknown>, deps: Record<string, unknown>) => {
     control.writes.push({ kind: "bite", input });
     control.biteDeps.push(deps);
@@ -2213,6 +2215,16 @@ describe("POST .../events — mordedura, y la jurisdiccion es la del hecho", () 
     expect(res.status).toBe(409);
     // Its own code: `event_not_allowed` reads "registrada como fallecida" on the app.
     await expect(res.json()).resolves.toEqual({ error: "bite_observation_open" });
+    expect(control.reported).toEqual([]);
+  });
+
+  it("answers 409 idempotency_key_taken — not a retryable 500 — for ANOTHER actor's key", async () => {
+    const { KEY_TAKEN_ERROR } = await import("@/src/modules/surveillance/application/report-bite");
+    control.biteResult = () => ({ ok: false, error: KEY_TAKEN_ERROR });
+    const res = await call(A_BITE);
+    expect(res.status).toBe(409);
+    // `event_failed` would tell the app to retry with the SAME key, forever.
+    await expect(res.json()).resolves.toEqual({ error: "idempotency_key_taken" });
     expect(control.reported).toEqual([]);
   });
 
