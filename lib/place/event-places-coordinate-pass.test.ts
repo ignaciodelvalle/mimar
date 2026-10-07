@@ -242,11 +242,11 @@ describe("the operator script's guard", () => {
   });
 
   it.each([
-    ["the compose hostname", "postgresql://postgres:postgres@db:5432/postgres"],
-    ["0.0.0.0", "postgresql://postgres:postgres@0.0.0.0:54322/postgres"],
-    ["host.docker.internal", "postgresql://postgres:postgres@host.docker.internal:54322/postgres"],
-    ["the CLI container name", "postgresql://postgres:postgres@supabase_db_dim:5432/postgres"],
-    ["loopback on another port", "postgresql://postgres:postgres@127.0.0.1:5432/postgres"],
+    ["the compose hostname", "postgresql://postgres@db:5432/postgres"],
+    ["0.0.0.0", "postgresql://postgres@0.0.0.0:54322/postgres"],
+    ["host.docker.internal", "postgresql://postgres@host.docker.internal:54322/postgres"],
+    ["the CLI container name", "postgresql://postgres@supabase_db_dim:5432/postgres"],
+    ["loopback on another port", "postgresql://postgres@127.0.0.1:5432/postgres"],
     ["an unparseable URL", "not a url"],
   ])(
     "refuses to WRITE %s without --allow-remote (only the CLI stack is a writer's local)",
