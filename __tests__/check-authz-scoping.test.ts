@@ -180,6 +180,72 @@ describe("offenders: the old markers in strings, comments and incidental identif
     expect(verdict(src).scopedBy).toBeNull();
   });
 
+  it("FLAGS a guard binding shadowed by a for-of variable or a catch clause", () => {
+    const loop = lines(
+      "export async function a(rows: { id: string }[]) {",
+      "  const { user } = await requireAdminOrRedirect();",
+      "  for (const user of rows) await w(user.id);",
+      "}",
+    );
+    const caught = lines(
+      "export async function a(id: string) {",
+      "  const { user } = await requireAdminOrRedirect();",
+      "  try { await w(id); } catch (user) { await report(user); }",
+      "}",
+    );
+    expect(verdict(loop).scopedBy).toBeNull();
+    expect(verdict(caught).scopedBy).toBeNull();
+  });
+
+  it("FLAGS role checks against constants and role lists (state, not scope)", () => {
+    const src = lines(
+      "export async function a(id: string) {",
+      "  const session = await requireAdminOrGovtOrRedirect();",
+      "  if (session.profile.role === ROLES.admin) await w(id);",
+      "  if (session.profile.role === ADMIN_ROLE) await w(id);",
+      "  if (ADMIN_ROLES.includes(session.profile.role)) await w(id);",
+      '  if (session.roles.some((r) => r === "admin")) await w(id);',
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("a row keyed by the SESSION does not pin a guard (the caller's own org, not the resource's)", () => {
+    // The session-keyed read itself is still a session value reaching a
+    // predicate — the flow rule's documented limit (it trusts any work the
+    // session reaches) — so this asserts only that rule (a) does not fire.
+    const src = lines(
+      "export async function a(input: { thingId: string }) {",
+      "  const { user } = await requireUserOrRedirect();",
+      "  const [me] = await db.select().from(profiles).where(eq(profiles.id, user.id));",
+      '  await requireCapability("x", me.organizationId);',
+      "  await db.update(things).set({ done: true }).where(eq(things.id, input.thingId));",
+      "}",
+    );
+    expect(verdict(src).scopedBy).not.toMatch(/pinned/);
+  });
+
+  it("a session value handed only to another admission guard is not scoping", () => {
+    const src = lines(
+      "export async function a(input: { thingId: string }) {",
+      "  const session = await requireOrgAccessByToken(input.orgToken);",
+      '  await requireCapability("x", session.organization.id);',
+      "  await db.update(things).set({ done: true }).where(eq(things.id, input.thingId));",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("analyses an exported async arrow action like a function declaration", () => {
+    const src = lines(
+      "export const a = async (id: string) => {",
+      "  await requireAdminOrRedirect();",
+      "  return w(id);",
+      "};",
+    );
+    expect(findScopingOffenders("app/actions/x.ts", src)).toEqual(["app/actions/x.ts#a"]);
+  });
+
   it("FLAGS a capability pinned to a caller-supplied org whose result is thrown away", () => {
     const src = lines(
       "export async function a(input: { orgId: string; thingId: string }) {",
