@@ -528,3 +528,55 @@ describe("every action the old screen offered is still reachable (custody polish
     expect(mockSend).not.toHaveBeenCalled();
   });
 });
+
+/** Every string the screen draws, in the order it draws them. */
+function textsInOrder(): string[] {
+  const out: string[] = [];
+  const walk = (node: unknown) => {
+    if (node === null || node === undefined) return;
+    if (typeof node === "string") {
+      out.push(node);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    const children = (node as { children?: unknown }).children;
+    if (children) walk(children);
+  };
+  walk(screen.toJSON());
+  return out;
+}
+
+describe("the decision shows what it decides (PO rule, custody polish review)", () => {
+  it("draws the sender, the reason and the deadline ABOVE the answer", async () => {
+    loads(aTransfer());
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText("Aceptar la titularidad");
+
+    const texts = textsInOrder();
+    const accept = texts.indexOf("Aceptar la titularidad");
+    for (const fact of ["De: Vecina", "Regalo", "Vence el 27/08/2026"]) {
+      const at = texts.findIndex((t) => t === fact);
+      expect(at).toBeGreaterThan(-1);
+      expect(at).toBeLessThan(accept);
+    }
+  });
+
+  it("repeats them INSIDE the accept confirmation, before the irreversible tap", async () => {
+    loads(aTransfer());
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    fireEvent.press(await screen.findByText("Aceptar la titularidad"));
+
+    const texts = textsInOrder();
+    const title = texts.indexOf("¿Aceptás la titularidad?");
+    const confirm = texts.indexOf("Sí, aceptar la titularidad");
+    for (const fact of ["De: Vecina", "Regalo", "Vence el 27/08/2026"]) {
+      // Once above the answer, and once again between the callout's title and
+      // the button that commits.
+      const inside = texts.slice(title, confirm).filter((t) => t === fact);
+      expect(inside).toHaveLength(1);
+    }
+  });
+});
