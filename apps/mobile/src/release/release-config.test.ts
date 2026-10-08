@@ -65,6 +65,7 @@ const easJson = readJson("eas.json") as {
       env?: Record<string, string>;
     }
   >;
+  submit?: Record<string, { android?: { track?: string; releaseStatus?: string } }>;
 };
 
 const packageJson = readJson("package.json") as {
@@ -111,6 +112,18 @@ describe("EAS build profiles", () => {
       expect(easJson.build[profile]?.channel).toBe(profile);
     },
   );
+
+  it("never lets `eas submit` reach Play's production track", () => {
+    // Uploading to internal and closed testing is automated; promoting a build
+    // to production stays a human step in the Play Console. A submit profile
+    // aimed at "production" would publish to every user on one command.
+    const submit = easJson.submit ?? {};
+    expect(submit.production?.android?.track).toBe("internal");
+    expect(submit.closed?.android?.track).toBe("alpha");
+    for (const profile of Object.values(submit)) {
+      expect(profile.android?.track).not.toBe("production");
+    }
+  });
 
   it("gives the testers a file their phones can install", () => {
     // An .aab is a publishing container Google's servers split into per-device

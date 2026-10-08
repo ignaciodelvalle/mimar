@@ -39,5 +39,19 @@
         "buildType": "app-bundle"
       }
     }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
+    },
+    "closed": {
+      "android": {
+        "track": "alpha",
+        "releaseStatus": "completed"
+      }
+    }
   }
 }
