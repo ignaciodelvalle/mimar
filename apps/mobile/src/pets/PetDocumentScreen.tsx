@@ -61,7 +61,7 @@ import { DocumentChromeNative, type DocumentFace } from "./DocumentChromeNative"
 import { TurningSheet, useDocumentTurn } from "./DocumentTurn";
 import { FormerOwnerFace } from "./FormerOwnerFace";
 import { LibretaScreen } from "./LibretaScreen";
-import { OwnerActionPanel } from "./OwnerActionPanel";
+import { OwnerActionPanel, ownerPanelRowStatus } from "./OwnerActionPanel";
 import { OwnerCredentialFace, OwnerExtraSections } from "./OwnerFace";
 import {
   type OwnerFaceView,
@@ -336,7 +336,7 @@ export function PetDocumentScreen({
       </TurningSheet>
 
       {painted === "credencial" && view !== null && panel !== null ? (
-        <OwnerActionPanel panel={panel}>
+        <OwnerActionPanel panel={panel} status={ownerPanelRowStatus(view)}>
           <OwnerExtraSections view={view} />
         </OwnerActionPanel>
       ) : null}
