@@ -116,9 +116,9 @@ export function disclosureLabel(key: DisclosureKey): string {
     case "discloseEmailWhenLost":
       return "Mostrar mi email";
     case "discloseLastLocationWhenLost":
-      return "Mostrar dónde la vieron por última vez";
+      return "Mostrar dónde se vio por última vez";
     case "allowFinderFormWhenLost":
-      return "Permitir que quien la encuentre me escriba";
+      return "Permitir que me escriba quien encuentre a mi mascota";
     case "discloseCaretakerContactWhenLost":
       return "Mostrar el contacto de su cuidador/a";
   }
@@ -143,7 +143,7 @@ export function disclosureHelp(key: DisclosureKey): string {
     case "discloseLastLocationWhenLost":
       return "Se publica el lugar y el momento del último avistaje.";
     case "allowFinderFormWhenLost":
-      return "Sin esto, quien la encuentre solo puede reportar un avistaje.";
+      return "Sin esto, quien encuentre a tu mascota solo puede reportar un avistaje.";
     case "discloseCaretakerContactWhenLost":
       return "Solo se publica si además tu cuidador/a dio su consentimiento.";
   }
@@ -353,11 +353,24 @@ export const FEED_EMPTY_LABEL = "Todavía no hay avistajes ni escaneos.";
  * name pasted here would outlive the owner turning `discloseLastLocationWhenLost`
  * off.
  *
- * "La" is the codebase's article for `la mascota` (see `disclosureLabel`'s
- * "dónde la vieron"); only the adjective carries the animal's sex.
+ * The adjective AND the pronoun carry the animal's sex — "está perdido. Si lo
+ * viste" — never a feminine "la" beside a masculine adjective (QA v14 P3: the
+ * lost screen said "perdido" and "dónde la vieron" about the same male dog).
  */
 export function shareSearchMessage(view: PetLostV1, url: string): string {
-  return `Estamos buscando a ${view.petName}, está ${lostAdjective(view.petSex)}. Si la viste, avisá desde su credencial: ${url}`;
+  return `Estamos buscando a ${view.petName}, está ${lostAdjective(view.petSex)}. Si ${objectPronoun(view.petSex)} viste, avisá desde su credencial: ${url}`;
+}
+
+/** "lo" / "la" / "lo/la" — the object pronoun for the animal, by its sex. */
+export function objectPronoun(sex: string | null): string {
+  switch (sex) {
+    case "male":
+      return "lo";
+    case "female":
+      return "la";
+    default:
+      return "lo/la";
+  }
 }
 
 /**

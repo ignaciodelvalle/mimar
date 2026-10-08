@@ -395,14 +395,14 @@ export function ReportForm({
 
   return (
     <>
-      <Callout title="Actualizar dónde la vieron">
+      <Callout title="Actualizar dónde se vio">
         <Body>
           Se agrega como un avistaje más a la búsqueda. Los avistajes no se editan ni se borran.
         </Body>
       </Callout>
 
       <LostPointPicker
-        label="Marcá dónde la vieron"
+        label="Marcá dónde se vio"
         draft={draft}
         setDraft={setDraft}
         startQuery={startQuery}

@@ -279,7 +279,7 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
     // which is the worst moment to read a sentence that does not say what to do,
     // so every one of them names the next move.
     case "lost_already":
-      return "Esta mascota ya está marcada como perdida. Abrí su búsqueda para actualizar dónde la vieron.";
+      return "Esta mascota ya está marcada como perdida. Abrí su búsqueda para actualizar dónde se vio.";
     case "pet_not_lost":
       // Covers the honest case (somebody else already marked it found) and the
       // stale one (the app's copy of the status is old). Both fix the same way.

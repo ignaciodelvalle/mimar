@@ -143,6 +143,23 @@ describe("shareSearchMessage — what leaves the owner's phone when they spread 
     expect(shareSearchMessage(view({ petSex: null }), URL)).toContain("perdido/a");
   });
 
+  it("the pronoun agrees with the adjective — never 'perdido' and 'la' (QA v14 P3)", () => {
+    expect(shareSearchMessage(view({ petSex: "male" }), URL)).toContain(
+      "está perdido. Si lo viste",
+    );
+    expect(shareSearchMessage(view({ petSex: "female" }), URL)).toContain(
+      "está perdida. Si la viste",
+    );
+    expect(shareSearchMessage(view({ petSex: null }), URL)).toContain("Si lo/la viste");
+  });
+
+  it("the disclosure rows speak of the animal without a gendered pronoun", () => {
+    for (const key of ["discloseLastLocationWhenLost", "allowFinderFormWhenLost"] as const) {
+      expect(disclosureLabel(key)).not.toMatch(/\bla (vieron|encuentre)\b/);
+      expect(disclosureHelp(key)).not.toMatch(/\bla (vieron|encuentre)\b/);
+    }
+  });
+
   it("carries NOTHING a disclosure toggle governs — the URL is the whole payload", () => {
     // The message outlives every toggle the moment it lands in a group chat;
     // the credential page obeys them at read time, so it alone carries them.

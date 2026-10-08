@@ -281,7 +281,7 @@ function LostActions({
 
       {can.canReportLastSeen ? (
         <ListRow
-          label="Actualizar dónde la vieron"
+          label="Actualizar dónde se vio"
           caption="Suma un avistaje a la búsqueda."
           onPress={unlessBusy(onReport)}
         />

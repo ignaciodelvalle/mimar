@@ -177,7 +177,7 @@ describe("LostScreen — the affordances come from capabilities, never from stat
   it("offers ONLY marcar perdida for an animal that is not lost", async () => {
     render(<LostScreen publicToken={TOKEN} />);
     expect(await screen.findByText("Marcar como perdida")).toBeOnTheScreen();
-    expect(screen.queryByText("Actualizar dónde la vieron")).toBeNull();
+    expect(screen.queryByText("Actualizar dónde se vio")).toBeNull();
     expect(screen.queryByText("Marcar como encontrada")).toBeNull();
     expect(screen.queryByText("Reactivar búsqueda")).toBeNull();
   });
@@ -185,7 +185,7 @@ describe("LostScreen — the affordances come from capabilities, never from stat
   it("offers the running-search affordances mid-search, and not marcar perdida", async () => {
     mockFetch.mockResolvedValue(ok(searching()));
     render(<LostScreen publicToken={TOKEN} />);
-    expect(await screen.findByText("Actualizar dónde la vieron")).toBeOnTheScreen();
+    expect(await screen.findByText("Actualizar dónde se vio")).toBeOnTheScreen();
     expect(screen.getByText("Marcar como encontrada")).toBeOnTheScreen();
     expect(screen.queryByText("Marcar como perdida")).toBeNull();
   });
@@ -212,7 +212,7 @@ describe("LostScreen — the affordances come from capabilities, never from stat
     );
     render(<LostScreen publicToken={TOKEN} />);
     expect(await screen.findByText("Reactivar búsqueda")).toBeOnTheScreen();
-    expect(screen.queryByText("Actualizar dónde la vieron")).toBeNull();
+    expect(screen.queryByText("Actualizar dónde se vio")).toBeNull();
     expect(screen.getByText(/se cerró por inactividad/)).toBeOnTheScreen();
   });
 
@@ -510,7 +510,7 @@ describe("LostScreen — marcar perdida", () => {
     fireEvent.press(await screen.findByText("Marcar como perdida"));
     expect(screen.queryByText("Nadie va a poder contactarte")).toBeNull();
 
-    fireEvent.press(screen.getByText("Permitir que quien la encuentre me escriba"));
+    fireEvent.press(screen.getByText("Permitir que me escriba quien encuentre a mi mascota"));
 
     expect(screen.getByText("Nadie va a poder contactarte")).toBeOnTheScreen();
     // A WARNING AND NOT A BLOCK: the choice is theirs and the button stays live.
@@ -581,7 +581,7 @@ describe("LostScreen — the avistaje is the one command that appends", () => {
     mockFetch.mockResolvedValue(ok(searching()));
     mockSend.mockResolvedValue(ack("report_last_seen", true));
     render(<LostScreen publicToken={TOKEN} />);
-    fireEvent.press(await screen.findByText("Actualizar dónde la vieron"));
+    fireEvent.press(await screen.findByText("Actualizar dónde se vio"));
 
     fireEvent.changeText(screen.getByLabelText("Dónde"), "Cerca de la plaza");
     fireEvent.press(screen.getByText("Guardar avistaje"));
@@ -598,7 +598,7 @@ describe("LostScreen — the avistaje is the one command that appends", () => {
     mockFetch.mockResolvedValue(ok(searching()));
     mockSend.mockResolvedValue(ack("report_last_seen", false));
     render(<LostScreen publicToken={TOKEN} />);
-    fireEvent.press(await screen.findByText("Actualizar dónde la vieron"));
+    fireEvent.press(await screen.findByText("Actualizar dónde se vio"));
     fireEvent.press(screen.getByText("Guardar avistaje"));
 
     expect(await screen.findByText(/no se duplicó/)).toBeOnTheScreen();
@@ -848,7 +848,7 @@ describe("LostScreen — the refusals a person sees", () => {
     mockFetch.mockResolvedValue(ok(searching()));
     mockSend.mockResolvedValue({ outcome: "api-error", code: "lost_episode_closed" });
     render(<LostScreen publicToken={TOKEN} />);
-    fireEvent.press(await screen.findByText("Actualizar dónde la vieron"));
+    fireEvent.press(await screen.findByText("Actualizar dónde se vio"));
     fireEvent.press(screen.getByText("Guardar avistaje"));
 
     expect(await screen.findByText(/se cerró por inactividad/)).toBeOnTheScreen();
@@ -885,7 +885,7 @@ describe("LostScreen — coming back does not blank or delete the search (F7)", 
   it("does not spin the whole panel when the screen regains focus", async () => {
     mockFetch.mockResolvedValue(ok(searching()));
     render(<LostScreen publicToken={TOKEN} />);
-    await screen.findByText("Actualizar dónde la vieron");
+    await screen.findByText("Actualizar dónde se vio");
 
     // A read held in flight, so the assertion below describes the window the
     // person actually sees rather than the state after it closes.
@@ -893,13 +893,13 @@ describe("LostScreen — coming back does not blank or delete the search (F7)", 
     await refocus();
 
     expect(screen.queryByText("Leyendo la búsqueda…")).toBeNull();
-    expect(screen.getByText("Actualizar dónde la vieron")).toBeOnTheScreen();
+    expect(screen.getByText("Actualizar dónde se vio")).toBeOnTheScreen();
   });
 
   it("keeps the search when a focus re-read fails, and says so in a banner", async () => {
     mockFetch.mockResolvedValue(ok(searching()));
     render(<LostScreen publicToken={TOKEN} />);
-    await screen.findByText("Actualizar dónde la vieron");
+    await screen.findByText("Actualizar dónde se vio");
 
     mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
     await refocus();
@@ -907,7 +907,7 @@ describe("LostScreen — coming back does not blank or delete the search (F7)", 
     await waitFor(() => expect(screen.getByText("No pudimos actualizar")).toBeOnTheScreen());
     // The search is STILL THERE. Deleting it is the exact defect S-2 names, and
     // this screen is the worst place in the app to do it.
-    expect(screen.getByText("Actualizar dónde la vieron")).toBeOnTheScreen();
+    expect(screen.getByText("Actualizar dónde se vio")).toBeOnTheScreen();
   });
 
   it("still empties the screen when the FIRST read fails", async () => {
@@ -1184,7 +1184,7 @@ describe("LostScreen — the home-locality chip on marcar perdida (PO, 2026-09-2
 //   not lost      · Marcar como perdida → (form) Marcar como perdida · Cancelar
 //                   · each editable disclosure switch · Actualizar
 //   lost, active  · Compartir la búsqueda · Marcar como encontrada → Sí, la
-//                   encontré · Cancelar · Actualizar dónde la vieron → Guardar
+//                   encontré · Cancelar · Actualizar dónde se vio → Guardar
 //                   avistaje · Cancelar · Compartir o imprimir el cartel · each
 //                   disclosure switch · Reportar (feed) → each motive · Reportar
 //                   · Cancelar · Actualizar
@@ -1194,7 +1194,7 @@ describe("LostScreen — every action the old screen offered is still reachable"
   /**
    * The button that draws EXACTLY this label. Walked up from the text rather
    * than matched by accessible name, because a row's name carries its caption
-   * and "Actualizar" is a prefix of "Actualizar dónde la vieron".
+   * and "Actualizar" is a prefix of "Actualizar dónde se vio".
    */
   function expectReachable(label: string) {
     let node: ReturnType<typeof screen.getByText> | null = screen.getByText(label);
@@ -1260,7 +1260,7 @@ describe("LostScreen — every action the old screen offered is still reachable"
     expectReachable("Sí, la encontré");
     fireEvent.press(expectReachable("Cancelar"));
 
-    fireEvent.press(expectReachable("Actualizar dónde la vieron"));
+    fireEvent.press(expectReachable("Actualizar dónde se vio"));
     expectReachable("Guardar avistaje");
     fireEvent.press(expectReachable("Cancelar"));
 
