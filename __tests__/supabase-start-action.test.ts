@@ -138,7 +138,13 @@ function runAction(
     [
       "#!/bin/bash",
       `echo "$*" >> ${JSON.stringify(callLog)}`,
-      'if [ "$1" = "login" ]; then exit "${DOCKER_LOGIN_RC:-0}"; fi',
+      // DRAIN STDIN BEFORE ANSWERING. The action pipes the token into
+      // `docker login --password-stdin` under `pipefail`; a stub that exits
+      // without reading can close the pipe before `printf` writes, `printf`
+      // dies of SIGPIPE, and the pipeline reads as a failed login — the
+      // "could not resolve" case then printed the login warning instead
+      // (CI run 37691584344, shard 1). The real docker reads its stdin.
+      'if [ "$1" = "login" ]; then cat >/dev/null; exit "${DOCKER_LOGIN_RC:-0}"; fi',
       'if [ "$1" = "buildx" ] && [ "$2" = "imagetools" ] && [ "$3" = "inspect" ]; then exit "${DOCKER_INSPECT_RC:-0}"; fi',
       "exit 0",
       "",
