@@ -699,15 +699,26 @@ describe("updatePetAction", () => {
         ...base,
         pet: { ...base.pet, species: "dog", dateOfBirth: "1950-05-01", birthDateIsEstimated: true },
       });
-      const shown = petAgeFromBirthDate("1950-05-01", new Date());
-      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
-      const result = await updatePetAction(
-        "DIM-TEST-0001",
-        { error: null },
-        makeUpdateFormData({ ageYears: String(shown.years), ageMonths: String(shown.months) }),
-      );
-      expect((result as { error?: string }).error ?? null).toBeNull();
-      expect(updatePet).toHaveBeenCalledTimes(1);
+      // A fixed clock and LITERAL ages: the age must not come from the reader
+      // the gate itself uses to decide "untouched".
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-01T15:00:00.000Z"));
+      try {
+        const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+        const result = await updatePetAction(
+          "DIM-TEST-0001",
+          { error: null },
+          makeUpdateFormData({ ageYears: "76", ageMonths: "5" }),
+        );
+        expect((result as { error?: string }).error ?? null).toBeNull();
+        expect(updatePet).toHaveBeenCalledTimes(1);
+        const call = (updatePet as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+          parsed: { dateOfBirth: string };
+        };
+        expect(call.parsed.dateOfBirth).toBe("1950-05-01");
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

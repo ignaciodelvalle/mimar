@@ -1411,11 +1411,16 @@ describe("POST — editar datos por sección", () => {
         pet: petRow({ dateOfBirth: "1950-05-01" }),
         holderRole: "owner",
       });
-      const shown = petAgeFromBirthDate("1950-05-01", new Date());
-      expect(shown.years).toBeGreaterThan(40);
-      const response = await send(identityWithAge(shown.years, shown.months));
-      expect(response.status).toBe(200);
-      expect(composed()).toMatchObject({ color: "Blanca", dateOfBirth: "1950-05-01" });
+      // A fixed clock and LITERAL ages, not the gate's own reader.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-01T15:00:00.000Z"));
+      try {
+        const response = await send(identityWithAge(76, 5));
+        expect(response.status).toBe(200);
+        expect(composed()).toMatchObject({ color: "Blanca", dateOfBirth: "1950-05-01" });
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("lets `other` state an age past 40 — a tortuga terrestre", async () => {
