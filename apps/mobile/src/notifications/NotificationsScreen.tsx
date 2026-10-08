@@ -270,6 +270,8 @@ export function NotificationsScreen({
    */
   const open = useCallback(
     (notification: MyNotificationV1) => {
+      // A banner from an earlier tap must not outlive the next one.
+      setActionError(null);
       if (!notification.read) {
         const command = buildMarkRead([notification.id]);
         if (command.ok) {
