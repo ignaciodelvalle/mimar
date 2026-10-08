@@ -11,11 +11,14 @@
 // drawn as empty vs a refusal — which the view-model alone cannot prove.
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import type { PetLibretaV1 } from "@dim/contract/api";
 
 const mockPush = jest.fn();
+// The latest focus callback, so a test can REFOCUS the screen the way coming
+// back from a pushed detail does.
+const mockFocus: { current: (() => void) | null } = { current: null };
 const mockFetchPetLibreta = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.mock("expo-router", () => ({
@@ -26,6 +29,7 @@ jest.mock("expo-router", () => ({
   // per appearance) is unchanged.
   useFocusEffect: (callback: () => void) => {
     const { useEffect } = require("react");
+    mockFocus.current = callback;
     useEffect(callback, [callback]);
   },
 }));
@@ -492,6 +496,31 @@ describe("LibretaScreen — trip papers ticks", () => {
     fireEvent.press(screen.getByRole("button", { name: "Ocultar los cambios" }));
     expect(screen.queryByText("Cambio 2 de 3")).toBeNull();
     expect(screen.getByRole("button", { name: "Ver cada cambio" })).toBeCollapsed();
+  });
+
+  it("stays open after opening one change and coming back (QA v14 P2b)", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        timeline: {
+          status: "ok",
+          data: { entries: [tick("t-3"), tick("t-2"), tick("t-1")], total: 3, truncated: false },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    await screen.findByText("Papeles del viaje actualizados · 3 cambios · Chile");
+    fireEvent.press(screen.getByRole("button", { name: "Ver cada cambio" }));
+    fireEvent.press(screen.getByRole("link", { name: "Cambio 2 de 3" }));
+    expect(mockPush).toHaveBeenLastCalledWith(`/mascotas/${TOKEN}/eventos/t-2`);
+
+    // Back from the detail: the focus re-read unmounts the ledger behind a
+    // skeleton and draws it again. The list the owner opened is still open.
+    act(() => mockFocus.current?.());
+    await screen.findByText("Papeles del viaje actualizados · 3 cambios · Chile");
+    expect(screen.getByRole("button", { name: "Ocultar los cambios" })).toBeExpanded();
+    expect(screen.getByRole("link", { name: "Cambio 1 de 3" })).toBeOnTheScreen();
+    expect(mockFetchPetLibreta).toHaveBeenCalledTimes(2);
   });
 });
 

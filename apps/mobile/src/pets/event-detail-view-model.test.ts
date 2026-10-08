@@ -21,6 +21,7 @@ import {
   isPassThroughFact,
   isRequiredFact,
   readOnlyFacts,
+  showsCorrectionHistory,
 } from "./event-detail-view-model";
 
 const NOW = new Date("2026-08-25T15:00:00Z");
@@ -427,5 +428,12 @@ describe("buildAmendEventCommand", () => {
     expect(built.ok).toBe(false);
     if (built.ok) return;
     expect(built.code).toBe("CHANGES_REQUIRED");
+  });
+});
+
+describe("showsCorrectionHistory — a papers tick is a change, not a corrected record (QA v14 P2b)", () => {
+  it("draws no 'Correcciones' section under an event_amended record", () => {
+    expect(showsCorrectionHistory({ eventType: "event_amended" })).toBe(false);
+    expect(showsCorrectionHistory({ eventType: "vaccination_administered" })).toBe(true);
   });
 });

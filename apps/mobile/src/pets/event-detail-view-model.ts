@@ -188,6 +188,16 @@ export const AMENDMENT_NO_VISIBLE_CHANGE =
 
 export const AMENDMENTS_EMPTY_LABEL = "Este registro nunca se corrigió.";
 
+/**
+ * Whether the screen draws a "Correcciones" history at all. Not for an
+ * `event_amended` record — a "Lo tengo" papers tick IS a change, not a record
+ * that gets corrected, and "Este registro nunca se corrigió" under it read as
+ * if the tick were the trip (QA v14 P2b).
+ */
+export function showsCorrectionHistory(view: { eventType: string }): boolean {
+  return view.eventType !== "event_amended";
+}
+
 // ---------------------------------------------------------------------------
 // Attachments
 // ---------------------------------------------------------------------------

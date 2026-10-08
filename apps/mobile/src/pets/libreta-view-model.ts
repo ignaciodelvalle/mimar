@@ -329,7 +329,18 @@ export const TRIP_PAPERS_UPDATED_LABEL = "Papeles del viaje actualizados";
 /** One line of the ledger: an asiento, or a run of papers ticks drawn as one. */
 export type LedgerItem =
   | { kind: "entry"; entry: LibretaEntryV1 }
-  | { kind: "papers"; entries: LibretaEntryV1[]; label: string };
+  | {
+      kind: "papers";
+      entries: LibretaEntryV1[];
+      label: string;
+      /**
+       * The group's identity — its trip and day (`tripPapersTickKey`), NOT the
+       * newest tick's id, which changes with every new tick. The screen keys
+       * the "Ver cada cambio" expander on it so the list stays open when the
+       * owner comes back from one change (QA v14 P2b).
+       */
+      key: string;
+    };
 
 function factValue(entry: LibretaEntryV1, key: string): string | null {
   return entry.facts.find((fact) => fact.key === key)?.value ?? null;
@@ -386,6 +397,7 @@ export function groupLedgerEntries(entries: readonly LibretaEntryV1[]): LedgerIt
         kind: "papers",
         entries: run,
         label: tripPapersGroupLabel(run.length, factValue(head, "Destino")),
+        key: runKey ?? head.eventId,
       });
     }
     run = [];

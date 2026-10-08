@@ -95,6 +95,19 @@ export function LibretaScreen({
   onRefreshSettled?: () => void;
 }) {
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
+  // Which "Ver cada cambio" lists are open, by group key. HELD HERE, not in the
+  // group: every focus re-reads the libreta and a first read unmounts the
+  // ledger, so a group's own state came back collapsed after opening one change
+  // (QA v14 P2b). This component stays mounted under the pushed detail screen.
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleGroup = useCallback((key: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
   // Guards against a stale response overwriting a newer one when a focus and a
   // pull overlap — the same generation counter its sibling screens use, for
   // the same reason. (It guarded a double-tapped "Actualizar" until
@@ -170,7 +183,14 @@ export function LibretaScreen({
       {state.phase === "ready" && state.staleFailure !== null ? (
         <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
       ) : null}
-      {state.phase === "ready" ? <LibretaBody view={state.view} deceased={deceased} /> : null}
+      {state.phase === "ready" ? (
+        <LibretaBody
+          view={state.view}
+          deceased={deceased}
+          expandedGroups={expandedGroups}
+          onToggleGroup={toggleGroup}
+        />
+      ) : null}
     </View>
   );
 }
@@ -191,7 +211,17 @@ function Section<T>({
   return <Card title={title}>{children(view.data)}</Card>;
 }
 
-function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean }) {
+function LibretaBody({
+  view,
+  deceased,
+  expandedGroups,
+  onToggleGroup,
+}: {
+  view: LibretaView;
+  deceased: boolean;
+  expandedGroups: ReadonlySet<string>;
+  onToggleGroup: (key: string) => void;
+}) {
   const router = useRouter();
   // Frozen at mount and threaded into every relative label, so a screen sitting
   // on a day boundary cannot flip "Mañana" to "Hoy" between re-renders. The web
@@ -323,6 +353,8 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
                       label={item.label}
                       entries={item.entries}
                       onOpen={open}
+                      expanded={expandedGroups.has(item.key)}
+                      onToggle={() => onToggleGroup(item.key)}
                     />
                   );
                 }
@@ -498,12 +530,15 @@ function PapersGroup({
   label,
   entries,
   onOpen,
+  expanded,
+  onToggle,
 }: {
   label: string;
   entries: LibretaEntryV1[];
   onOpen: (eventId: string) => void;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const head = entries[0];
   if (head === undefined) return null;
   return (
@@ -516,7 +551,7 @@ function PapersGroup({
       />
       <View style={styles.papersTicks}>
         <LinkText
-          onPress={() => setExpanded((value) => !value)}
+          onPress={onToggle}
           accessibilityRole="button"
           accessibilityState={{ expanded }}
           accessibilityHint={expanded ? "Oculta la lista" : "Muestra un enlace por cada cambio"}

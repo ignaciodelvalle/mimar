@@ -77,6 +77,7 @@ import {
   eventDetailActions,
   initialAmendEdits,
   readOnlyFacts,
+  showsCorrectionHistory,
 } from "./event-detail-view-model";
 import { createAttemptSession } from "./idempotency";
 import { formatArDate } from "./libreta-view-model";
@@ -242,29 +243,31 @@ function EventDetailBody({
       </Section>
 
       {/* CORRECCIONES ----------------------------------------------------- */}
-      <Section view={view.amendments} title="Correcciones">
-        {(amendments) =>
-          amendments.items.length === 0 ? (
-            <Body>{AMENDMENTS_EMPTY_LABEL}</Body>
-          ) : (
-            <View style={styles.amendments}>
-              {amendments.items.map((step) => (
-                <View key={step.amendmentId} style={styles.amendStep}>
-                  <Eyebrow>{amendmentHeadline(step)}</Eyebrow>
-                  {step.changes.length === 0 ? (
-                    <Body>{AMENDMENT_NO_VISIBLE_CHANGE}</Body>
-                  ) : (
-                    step.changes.map((change) => (
-                      <Body key={change.label}>{amendmentChangeLine(change)}</Body>
-                    ))
-                  )}
-                  {step.reason ? <Body>Motivo: {step.reason}</Body> : null}
-                </View>
-              ))}
-            </View>
-          )
-        }
-      </Section>
+      {showsCorrectionHistory(view) ? (
+        <Section view={view.amendments} title="Correcciones">
+          {(amendments) =>
+            amendments.items.length === 0 ? (
+              <Body>{AMENDMENTS_EMPTY_LABEL}</Body>
+            ) : (
+              <View style={styles.amendments}>
+                {amendments.items.map((step) => (
+                  <View key={step.amendmentId} style={styles.amendStep}>
+                    <Eyebrow>{amendmentHeadline(step)}</Eyebrow>
+                    {step.changes.length === 0 ? (
+                      <Body>{AMENDMENT_NO_VISIBLE_CHANGE}</Body>
+                    ) : (
+                      step.changes.map((change) => (
+                        <Body key={change.label}>{amendmentChangeLine(change)}</Body>
+                      ))
+                    )}
+                    {step.reason ? <Body>Motivo: {step.reason}</Body> : null}
+                  </View>
+                ))}
+              </View>
+            )
+          }
+        </Section>
+      ) : null}
 
       <EventActions
         view={view}
