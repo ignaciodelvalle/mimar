@@ -173,6 +173,12 @@ const RLS_REQUIRED: ReadonlyArray<string> = [
   // titular. Zero write policies: open/close/supersede run over Drizzle
   // (BYPASSRLS). Behavioural fence: __tests__/rls/visits-rls.test.ts.
   "visits",
+  // Found-animal intake (migration 0292, P4): one row per org. SELECT TO
+  // authenticated for an active member, INSERT/UPDATE TO authenticated for an
+  // active ADMIN (caller_is_active_org_admin, SECURITY DEFINER), no DELETE,
+  // anon nothing. Every change audited by trigger. Behavioural fence:
+  // __tests__/rls/found-animal-intake-rls.test.ts.
+  "org_found_animal_intake",
 ];
 
 // ---------------------------------------------------------------------------

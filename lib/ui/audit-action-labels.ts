@@ -136,6 +136,7 @@ export const AUDIT_ACTION_LABELS = {
   org_verified: "Organización verificada",
   org_unverified: "Verificación de organización revocada",
   org_public_directory_opt_in_changed: "Directorio público: aparición cambiada",
+  org_found_animal_intake_changed: "Recepción de animales encontrados cambiada",
   // Microchip
   "microchip.replace": "Microchip reemplazado",
   microchip_replaced: "Microchip reemplazado",
