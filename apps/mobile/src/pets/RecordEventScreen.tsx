@@ -132,6 +132,7 @@ import {
   BITE_SEVERITY_OPTIONS,
   BITE_VICTIM_KIND_OPTIONS,
   CLINICAL_SUB_KIND_OPTIONS,
+  CONDITIONAL_KINDS_HEADING,
   DEWORMING_TYPE_OPTIONS,
   type EventDraft,
   FREQUENCY_OPTIONS,
@@ -141,7 +142,7 @@ import {
   RECORD_DONE_LABEL,
   RECORD_DUPLICATE_LABEL,
   RECORD_IMMUTABILITY_NOTE,
-  RECORD_KINDS,
+  RECORD_KIND_GROUPS,
   RESTORED_DRAFT_TITLE,
   SAME_DAY_PROMPT_LABEL,
   STERILIZATION_PROCEDURE_OPTIONS,
@@ -163,6 +164,7 @@ import {
   frequencyLabel,
   inputCodeMessage,
   invalidFields,
+  kindCaption,
   kindSubtitle,
   kindTitle,
   microchipReplaceReasonLabel,
@@ -352,38 +354,59 @@ function KindPicker({
           completa de lo que se puede escribir. */}
       <QuickCaptureBox facts={facts} onOpen={onPick} />
       <LabelledDivider label="o elegí el tipo" />
-      {RECORD_KINDS.map((kind) => (
-        <SecondaryButton
-          key={kind}
-          label={kindTitle(kind)}
-          accessibilityHint={kindSubtitle(kind)}
-          onPress={() => onPick(kind)}
-        />
+      {/* GROUPED LIKE THE WEB (`anotar/CaptureOptionsList.tsx`): one Eyebrow
+          per category, then rows. Thirteen stretched pills of equal weight
+          read as a wall; a label with a short caption under it reads as a
+          menu, and the categories let a person skip straight to the part of
+          the list they came for. `RECORD_KIND_GROUPS` owns the words. */}
+      {RECORD_KIND_GROUPS.map((group) => (
+        <View key={group.category} style={styles.kindGroup}>
+          <Eyebrow>{group.category}</Eyebrow>
+          <View style={styles.kindRows}>
+            {group.kinds.map((kind) => (
+              <ListRow
+                key={kind}
+                label={kindTitle(kind)}
+                caption={kindCaption(kind)}
+                accessibilityHint={kindSubtitle(kind)}
+                onPress={() => onPick(kind)}
+              />
+            ))}
+            {/* NOT A DESTINATION, AND IN THE GROUP IT BELONGS TO. Ending a
+                treatment happens on the asiento that started it, deliberately
+                (see this file's header); the inert row sits under "Salud",
+                right after the rest of the health acts, and its caption says
+                where the real control lives. */}
+            {group.kinds.includes("medication_start") ? (
+              <ListRow
+                label="Terminar una medicación"
+                caption='Se hace desde el asiento del inicio del tratamiento, en la libreta: "Terminar medicación".'
+              />
+            ) : null}
+          </View>
+        </View>
       ))}
-      {/* AFTER THE TEN AND NOT MIXED INTO THEM. The fixed list is ordered by
-          how often the act happens (see `RECORD_KINDS`), and a row that appears
-          a beat later must not push that order around under somebody's thumb.
-          Appending is the only insertion point where a late arrival moves
-          nothing that was already on screen. */}
-      {conditional.map((kind) => (
-        <SecondaryButton
-          key={kind}
-          label={kindTitle(kind)}
-          accessibilityHint={kindSubtitle(kind)}
-          onPress={() => onPick(kind)}
-        />
-      ))}
-      {/* Eleven pills and then this. It is NOT one of the eleven — ending a
-          treatment happens on the asiento that started it, deliberately (see
-          this file's header) — but until 2026-09-03 it was drawn as a `Card`,
-          a bordered box among stretched pills, because the kit had no row that
-          could say "this is here, and it is not a destination". It has one
-          now. Same list, same rhythm, visibly not tappable, and the caption
-          says where the real control lives. */}
-      <ListRow
-        label="Terminar una medicación"
-        caption='Se hace desde el asiento del inicio del tratamiento, en la libreta: "Terminar medicación".'
-      />
+      {/* AFTER THE FIXED GROUPS AND NOT MIXED INTO THEM. The fixed rows are
+          ordered by how often the act happens (see `RECORD_KINDS`), and a row
+          that appears a beat later must not push that order around under
+          somebody's thumb. Appending one last group is the only insertion
+          point where a late arrival moves nothing already on screen. */}
+      {conditional.length === 0 ? null : (
+        <View style={styles.kindGroup}>
+          <Eyebrow>{CONDITIONAL_KINDS_HEADING}</Eyebrow>
+          <View style={styles.kindRows}>
+            {conditional.map((kind) => (
+              <ListRow
+                key={kind}
+                label={kindTitle(kind)}
+                caption={kindCaption(kind)}
+                accessibilityHint={kindSubtitle(kind)}
+                onPress={() => onPick(kind)}
+              />
+            ))}
+          </View>
+        </View>
+      )}
     </Screen>
   );
 }
@@ -2424,4 +2447,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.stripe,
   },
   header: { gap: SPACE.xs },
+  kindGroup: { gap: SPACE.xs },
+  kindRows: { gap: SPACE.xs },
 });

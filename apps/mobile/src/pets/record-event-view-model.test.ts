@@ -7,12 +7,15 @@
 import { describe, expect, it } from "@jest/globals";
 
 import {
+  CONDITIONAL_KINDS,
   RECORD_KINDS,
+  RECORD_KIND_GROUPS,
   attestationRegistryOptions,
   conditionalKinds,
   emptyDraft,
   inputCodeMessage,
   isWritableKind,
+  kindCaption,
   kindSubtitle,
   kindTitle,
   restoredDraftNote,
@@ -528,5 +531,39 @@ describe("the bite's locality picked from the map's candidates", () => {
   it("carries no mark otherwise", () => {
     const result = validateDraft("bite", bite(trio));
     expect(result.ok && "localityPicked" in result.input).toBe(false);
+  });
+});
+
+describe("the picker's groups", () => {
+  it("puts every pickable kind in exactly one group", () => {
+    const grouped = RECORD_KIND_GROUPS.flatMap((group) => group.kinds);
+    expect([...grouped].sort()).toEqual([...RECORD_KINDS].sort());
+    expect(new Set(grouped).size).toBe(grouped.length);
+  });
+
+  it("keeps the frequency order of RECORD_KINDS inside each group", () => {
+    for (const group of RECORD_KIND_GROUPS) {
+      const positions = group.kinds.map((kind) => RECORD_KINDS.indexOf(kind));
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    }
+  });
+
+  it("names the web's categories, in the web's order", () => {
+    expect(RECORD_KIND_GROUPS.map((group) => group.category)).toEqual([
+      "Salud",
+      "Identificación",
+      "Incidentes",
+      "Notas",
+    ]);
+  });
+
+  it("gives every row a short caption, distinct from the long hint", () => {
+    for (const kind of [...RECORD_KINDS, ...CONDITIONAL_KINDS]) {
+      const caption = kindCaption(kind);
+      expect(caption.length).toBeGreaterThan(0);
+      expect(caption.length).toBeLessThanOrEqual(48);
+      expect(caption).not.toBe(kindSubtitle(kind));
+    }
+    expect(kindCaption("vaccination")).toBe("antirrábica, séxtuple, triple felina…");
   });
 });
