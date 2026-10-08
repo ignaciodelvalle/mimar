@@ -304,6 +304,12 @@ type EmptyStateProps =
       body: string;
       actionLabel?: string;
       onAction?: () => void;
+      /**
+       * One quiet line under the action that says what pressing it will cost —
+       * e.g. that it leaves the app and asks for a login. Said BEFORE the tap,
+       * because a login wall discovered after it reads as a dead end.
+       */
+      actionCaption?: string;
       secondary?: EmptyStateSecondary;
     }
   | {
@@ -325,13 +331,16 @@ export function EmptyState(props: EmptyStateProps) {
   if (props.compact === true) {
     return <Text style={styles.emptyCompact}>{props.headline}</Text>;
   }
-  const { headline, body, actionLabel, onAction, secondary } = props;
+  const { headline, body, actionLabel, onAction, actionCaption, secondary } = props;
   return (
     <View style={styles.empty}>
       <Text style={styles.emptyHeadline}>{headline}</Text>
       <Text style={styles.emptyBody}>{body}</Text>
       {actionLabel !== undefined && onAction !== undefined ? (
         <PrimaryButton label={actionLabel} onPress={onAction} />
+      ) : null}
+      {actionCaption !== undefined && onAction !== undefined ? (
+        <Text style={styles.emptySecondaryPrompt}>{actionCaption}</Text>
       ) : null}
       {secondary === undefined ? null : (
         <View style={styles.emptySecondary}>

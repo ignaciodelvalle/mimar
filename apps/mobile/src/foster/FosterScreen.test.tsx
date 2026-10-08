@@ -102,8 +102,16 @@ describe("loading and empty", () => {
     loads(hub());
     render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={onOffer} />);
     await waitFor(() => screen.getByText("Todavía no tenés tránsitos"));
-    fireEvent.press(screen.getByRole("button", { name: "Ofrecerme como tránsito" }));
+    fireEvent.press(screen.getByRole("button", { name: "Ofrecerme como tránsito (en la web)" }));
     expect(onOffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("says before the tap that the web will ask for a login (QA v14 P2e)", async () => {
+    loads(hub());
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
+    await waitFor(() => screen.getByText("Todavía no tenés tránsitos"));
+    expect(screen.getByText("Vas a tener que ingresar con tu cuenta.")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Ofrecerme como tránsito" })).toBeNull();
   });
 
   it("does not repeat 'Tránsito' in the body — the header says it", async () => {

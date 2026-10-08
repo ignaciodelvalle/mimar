@@ -60,6 +60,11 @@ function ackLabel(input: FosterCommandInput): string {
     : "Rechazaste la propuesta. Le avisamos al refugio.";
 }
 
+/** The offer form opens on the web; the label says where it goes. */
+export const FOSTER_OFFER_ACTION_LABEL = "Ofrecerme como tránsito (en la web)";
+/** …and the caption says what it will ask for there. */
+export const FOSTER_OFFER_ACTION_CAPTION = "Vas a tener que ingresar con tu cuenta.";
+
 export function FosterScreen({
   onOpenPet,
   onOfferAsFoster,
@@ -187,8 +192,13 @@ export function FosterScreen({
           body="Cuando un refugio te proponga cuidar una mascota, la vas a ver acá."
           // THE WAY IN, where the absence is stated: nobody is proposed a
           // tránsito who never offered to be one. The offer form lives on the
-          // web for now, so this opens it there.
-          actionLabel="Ofrecerme como tránsito"
+          // web for now, so this opens it there — and the app's session does
+          // not travel to the browser (QA v14 P2e: the button landed on a
+          // login wall). No SSO yet, so the label and the caption SAY so
+          // before the tap. Follow-up: a native offer form, which removes the
+          // trip to the web altogether.
+          actionLabel={FOSTER_OFFER_ACTION_LABEL}
+          actionCaption={FOSTER_OFFER_ACTION_CAPTION}
           onAction={onOfferAsFoster}
         />
       )}
