@@ -32,6 +32,15 @@
 // string here would be worse than the debt: the browser and the phone would print
 // two different codes for one turno. See `turnos-view-model.ts`'s header.
 //
+// ONE PRIMARY ACTION, THE REST AS ROWS (pulido-avisos, the Viaje treatment)
+// ---------------------------------------------------------------------------
+// The screen used to stack a primary and five outline buttons. Now: the status
+// is a Callout right under the title (what happened is said, not implied), the
+// check-in QR when the server allows it, ONE primary — "Agregar al calendario"
+// on a confirmed turno — the detail, and "Cancelar el turno" as a row that
+// opens its confirmation. Cancelling still takes two taps, the second one in
+// the seal red the web reserves for acts that end something.
+//
 // CANCELLING RE-READS ON EVERY FAILURE, ALWAYS
 // ---------------------------------------------------------------------------
 // There is no idempotency key and the endpoint asks for none. The writer's UPDATE
@@ -45,7 +54,7 @@ import * as Linking from "expo-linking";
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import type { MyAppointmentV1, MyAppointmentsV1 } from "@dim/contract/api";
+import type { AppointmentStatusV1, MyAppointmentV1, MyAppointmentsV1 } from "@dim/contract/api";
 
 import { apiFailureMessage } from "../api/client";
 import { fetchMyAppointments, sendAppointmentCommand } from "../api/endpoints";
@@ -53,7 +62,16 @@ import { sessionPort } from "../auth/session-store";
 import { CredentialQr } from "../credential/CredentialQr";
 import { Body, Card, Loading, Row } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { Callout, PrimaryButton, Screen, SecondaryButton, Title } from "../ui/kit";
+import {
+  Callout,
+  type CalloutTone,
+  Eyebrow,
+  ListRow,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  Title,
+} from "../ui/kit";
 import { COLORS, RADIUS, SPACE, TRACKING, TYPE } from "../ui/theme";
 
 import {
@@ -154,12 +172,12 @@ export function TurnoDetailScreen({ appointmentToken }: { appointmentToken: stri
     return (
       <Screen>
         <Title>Turno</Title>
-        <Card>
+        <Callout tone="neutral">
           <Body>
             No encontramos este turno en tu cuenta. Puede que ya no esté disponible o que lo haya
             reservado otra persona.
           </Body>
-        </Card>
+        </Callout>
         <SecondaryButton label="Reintentar" onPress={() => void load()} />
       </Screen>
     );
@@ -171,10 +189,24 @@ export function TurnoDetailScreen({ appointmentToken }: { appointmentToken: stri
   const phone = appointmentProviderPhone(appointment.provider);
   const calendarUrl = appointmentCalendarUrl(appointment);
 
+  const status = statusCallout(appointment, notice !== null);
+
   return (
     <Screen>
-      <Title>{appointmentServiceLabel(appointment)}</Title>
-      <Body>{appointmentStatusLabel(appointment.status)}</Body>
+      <View style={styles.head}>
+        {kind !== null && <Eyebrow>{kind}</Eyebrow>}
+        <Title>{appointmentServiceLabel(appointment)}</Title>
+      </View>
+
+      {/* THE STATE, described rather than the click reported, in ONE Callout.
+          Drawn on every later visit too, which is the rule the web's cancelled
+          callout follows: a confirmation that only exists in the frame after
+          the tap is a confirmation somebody scrolling can miss. */}
+      {status !== null && (
+        <Callout tone={status.tone} title={appointmentStatusLabel(appointment.status)}>
+          {status.body === null ? null : <Body>{status.body}</Body>}
+        </Callout>
+      )}
 
       {notice !== null && (
         <Callout tone={notice.tone}>
@@ -182,48 +214,8 @@ export function TurnoDetailScreen({ appointmentToken }: { appointmentToken: stri
         </Callout>
       )}
 
-      {/* THE STATE, described rather than the click reported. Drawn on every
-          later visit too, which is the rule the web's cancelled callout follows:
-          a confirmation that only exists in the frame after the tap is a
-          confirmation somebody scrolling can miss. */}
-      {appointment.status === "cancelled_by_owner" && notice === null && (
-        <Callout tone="neutral">
-          <Body>Cancelaste este turno y el horario quedó liberado.</Body>
-        </Callout>
-      )}
-      {appointment.status === "cancelled_by_org" && (
-        <Callout tone="warn">
-          <Body>
-            El prestador canceló este turno. Si lo necesitás, vas a tener que reservar otro.
-          </Body>
-        </Callout>
-      )}
-
-      <Card title="Detalle del turno">
-        <Row label="Mascota" value={appointment.pet.name} />
-        {kind !== null && <Row label="Tipo de servicio" value={kind} />}
-        <Row label="Prestador" value={appointmentProviderLabel(appointment.provider)} />
-        <Row label="Fecha y hora" value={appointmentWhenLabel(appointment.startsAt)} />
-        <Row label="Duración" value={`${appointment.durationMinutes} minutos`} />
-        <Row label="Precio" value={appointmentPriceLabel(appointment.priceArs)} />
-        {appointment.provider.kind === "organization" && appointment.provider.locality !== null && (
-          <Row label="Localidad" value={appointment.provider.locality} />
-        )}
-        {phone !== null && <Row label="Teléfono" value={phone} />}
-      </Card>
-
-      {/* CONFIRMED ONLY: a cancelled or attended turno is not an event anybody
-          should be adding to next week. Opens the person's own calendar app
-          with the event prefilled — no permission, no silent write; see
-          appointmentCalendarUrl for why this is not expo-calendar. */}
-      {appointment.status === "confirmed" && calendarUrl !== null && (
-        <SecondaryButton
-          label="Agregar al calendario"
-          onPress={() => void Linking.openURL(calendarUrl).catch(() => {})}
-        />
-      )}
-
-      {/* THE SERVER'S FLAG AND NOTHING ELSE. See the header. */}
+      {/* THE SERVER'S FLAG AND NOTHING ELSE. See the header. First after the
+          status, because the person who has it open at the desk is here for it. */}
       {canCheckIn && (
         <Card title="Check-in en la clínica">
           <Body>Mostrá este QR cuando llegues. Si el escáner no lo lee, dictá el código.</Body>
@@ -241,52 +233,103 @@ export function TurnoDetailScreen({ appointmentToken }: { appointmentToken: stri
         </Card>
       )}
 
-      {appointment.status === "attended" && (
-        <Callout tone="ok">
-          <Body>
-            Asististe a este turno. El registro médico quedó guardado en la libreta de{" "}
-            {appointment.pet.name}.
-          </Body>
-        </Callout>
+      {/* THE ONE PRIMARY. CONFIRMED ONLY: a cancelled or attended turno is not
+          an event anybody should be adding to next week. Opens the person's own
+          calendar app with the event prefilled — no permission, no silent
+          write; see appointmentCalendarUrl for why this is not expo-calendar. */}
+      {appointment.status === "confirmed" && calendarUrl !== null && (
+        <PrimaryButton
+          label="Agregar al calendario"
+          onPress={() => void Linking.openURL(calendarUrl).catch(() => {})}
+        />
       )}
+
+      <Card title="Detalle del turno">
+        <Row label="Mascota" value={appointment.pet.name} />
+        <Row label="Prestador" value={appointmentProviderLabel(appointment.provider)} />
+        <Row label="Fecha y hora" value={appointmentWhenLabel(appointment.startsAt)} />
+        <Row label="Duración" value={`${appointment.durationMinutes} minutos`} />
+        <Row label="Precio" value={appointmentPriceLabel(appointment.priceArs)} />
+        {appointment.provider.kind === "organization" && appointment.provider.locality !== null && (
+          <Row label="Localidad" value={appointment.provider.locality} />
+        )}
+        {phone !== null && <Row label="Teléfono" value={phone} />}
+      </Card>
 
       {/* GATED ON THE SERVER FLAG, never on `status` and never on a date this
           device compared. Note it can be false while `canCheckIn` is true: that
-          is a consultation in progress, and the two windows differ on purpose. */}
-      {canCancel && (
-        <View style={styles.actions}>
-          {confirmingCancel ? (
-            <Callout tone="warn">
+          is a consultation in progress, and the two windows differ on purpose.
+          A ROW, NOT A BUTTON: it is not what this screen is for, and the act it
+          opens is the confirmation below, not the cancel itself. */}
+      {canCancel &&
+        (confirmingCancel ? (
+          <Callout tone="warn" title="¿Cancelar el turno?">
+            <View style={styles.confirm}>
               <Body>
                 Al cancelar, el horario queda liberado para otra persona. Para volver a tenerlo
                 habría que reservarlo de nuevo.
               </Body>
               <PrimaryButton
-                label={busy ? "Cancelando…" : "Sí, cancelar el turno"}
+                tone="seal"
+                label={busy ? "Cancelando…" : "Confirmar cancelación"}
                 disabled={busy}
                 onPress={() => void cancel()}
               />
               <SecondaryButton
-                label="No, volver"
+                label="Volver"
                 disabled={busy}
                 onPress={() => setConfirmingCancel(false)}
               />
-            </Callout>
-          ) : (
-            <SecondaryButton
-              label="Cancelar el turno"
-              disabled={busy}
-              onPress={() => setConfirmingCancel(true)}
-            />
-          )}
-        </View>
-      )}
+            </View>
+          </Callout>
+        ) : (
+          <ListRow
+            label="Cancelar el turno"
+            caption="Libera el horario para otra persona. Te vamos a pedir que lo confirmes."
+            onPress={busy ? undefined : () => setConfirmingCancel(true)}
+          />
+        ))}
     </Screen>
   );
 }
 
+/**
+ * The status Callout: its tone, and the sentence under the status label.
+ *
+ * `cancelled_by_owner` STEPS ASIDE while a notice is up, because the notice is
+ * the same fact said in the frame after the tap ("Cancelaste el turno…"), and
+ * two boxes saying it once each is one too many.
+ */
+function statusCallout(
+  appointment: MyAppointmentV1,
+  noticeShown: boolean,
+): { tone: CalloutTone; body: string | null } | null {
+  const status: AppointmentStatusV1 = appointment.status;
+  switch (status) {
+    case "confirmed":
+      return { tone: "ok", body: appointmentWhenLabel(appointment.startsAt) };
+    case "attended":
+      return {
+        tone: "ok",
+        body: `Asististe a este turno. El registro médico quedó guardado en la libreta de ${appointment.pet.name}.`,
+      };
+    case "cancelled_by_owner":
+      return noticeShown
+        ? null
+        : { tone: "neutral", body: "Cancelaste este turno y el horario quedó liberado." };
+    case "cancelled_by_org":
+      return {
+        tone: "warn",
+        body: "El prestador canceló este turno. Si lo necesitás, vas a tener que reservar otro.",
+      };
+    case "no_show":
+      return { tone: "warn", body: null };
+  }
+}
+
 const styles = StyleSheet.create({
-  actions: { gap: SPACE.sm, marginTop: SPACE.md },
+  head: { gap: SPACE.xs },
+  confirm: { gap: SPACE.sm },
   qrFrame: {
     alignSelf: "center",
     padding: SPACE.sm,
