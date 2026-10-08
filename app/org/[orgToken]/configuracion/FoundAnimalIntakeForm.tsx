@@ -16,6 +16,7 @@ import {
   type FoundAnimalIntakeSettings,
   INTAKE_CAPACITY_LABELS,
   INTAKE_CAPACITY_STATUSES,
+  INTAKE_CONFIRMATION_DAYS,
   INTAKE_CONTACT_KINDS,
   INTAKE_CONTACT_KIND_LABELS,
   INTAKE_CONTACT_MAX,
@@ -33,12 +34,15 @@ export function FoundAnimalIntakeForm({
   settings,
   verified,
   hasLocation,
+  confirmationExpired = false,
 }: {
   orgToken: string;
   settings: FoundAnimalIntakeSettings;
   verified: boolean;
   /** Whether the org has a pin or a catalogue locality to measure from. */
   hasLocation: boolean;
+  /** "Recibimos" not confirmed in INTAKE_CONFIRMATION_DAYS: shown publicly as "Consultar antes". */
+  confirmationExpired?: boolean;
 }) {
   const { boundAction, kept, keptChecked } = useKeptFields<FoundAnimalIntakeFormState>(
     updateFoundAnimalIntakeAction,
@@ -75,6 +79,14 @@ export function FoundAnimalIntakeForm({
           </p>
         )}
       </div>
+
+      {confirmationExpired && !state.saved && (
+        <LnAlert variant="warning">
+          Hace más de {INTAKE_CONFIRMATION_DAYS} días que no confirmás que reciben animales, así que
+          en la lista pública figura como “Consultar antes”. Revisá los datos y guardá para
+          confirmarlo.
+        </LnAlert>
+      )}
 
       <fieldset className="space-y-2">
         <legend className="text-md font-semibold text-ln-op-ink">¿Tienen lugar ahora?</legend>
