@@ -33,7 +33,7 @@ describe("postgresTlsOption — the matrix", () => {
   it.each([
     "postgresql://postgres:postgres@localhost:54322/postgres",
     "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
-    "postgresql://postgres:postgres@[::1]:54322/postgres",
+    "postgresql://u:p@[::1]:54322/postgres",
     "postgresql://postgres:postgres@127.0.0.1:54329/postgres",
     "postgres://postgres:postgres@localhost:5432/postgres",
   ])("loopback (%s) gets no TLS, in dev and in production", (url) => {
@@ -72,7 +72,6 @@ describe("postgresTlsOption — the matrix", () => {
   it("an explicit sslmode in the URL wins, with postgres.js's meaning", () => {
     expect(postgresTlsOption(`${POOLER}?sslmode=verify-full`, PROD)).toBe("verify-full");
     expect(postgresTlsOption(`${POOLER}?sslmode=require`, PROD)).toBe("require");
-    expect(postgresTlsOption(`${POOLER}?sslmode=prefer`, DEV)).toBe("prefer");
     expect(postgresTlsOption(`${POOLER}?ssl=true`, DEV)).toBe("true");
     // sslmode is copied over ssl, and sslrootcert=system forces verify-full.
     expect(postgresTlsOption(`${POOLER}?ssl=false&sslmode=require`, PROD)).toBe("require");
@@ -84,6 +83,19 @@ describe("postgresTlsOption — the matrix", () => {
       postgresTlsOption("postgresql://u:p@127.0.0.1:54322/postgres?sslmode=require", PROD),
     ).toBe("require");
   });
+
+  it.each(["prefer", "allow"])(
+    "sslmode=%s (plaintext fallback) is upgraded to require off loopback, kept on loopback",
+    (mode) => {
+      for (const env of [DEV, PROD, VERCEL_PREVIEW]) {
+        expect(postgresTlsOption(`${POOLER}?sslmode=${mode}`, env)).toBe("require");
+        expect(postgresTlsOption(`${DIRECT}?ssl=${mode}`, env)).toBe("require");
+        expect(
+          postgresTlsOption(`postgresql://u:p@127.0.0.1:54322/postgres?sslmode=${mode}`, env),
+        ).toBe(mode);
+      }
+    },
+  );
 
   it("sslmode=disable is honoured on loopback, and on a remote host outside production", () => {
     expect(
@@ -132,52 +144,75 @@ function unwrap(node: ts.Expression): ts.Expression {
   return current;
 }
 
-/** `import("postgres")` or `require("postgres")`, optionally awaited and `.default`-ed. */
-function loadsPostgresModule(init: ts.Expression): boolean {
+/**
+ * What a variable initialiser binds from postgres.js: the client factory
+ * (`(await import("postgres")).default`, `require("postgres")`), the module
+ * namespace (`await import("postgres")`, whose `.default` is the factory), or
+ * nothing. `require` counts as both: CommonJS interop varies.
+ */
+function loadsPostgresModule(init: ts.Expression): "factory" | "namespace" | "both" | null {
   let expr = unwrap(init);
+  let tookDefault = false;
   if (ts.isPropertyAccessExpression(expr) && expr.name.text === "default") {
     expr = unwrap(expr.expression);
+    tookDefault = true;
   }
-  if (!ts.isCallExpression(expr)) return false;
+  if (!ts.isCallExpression(expr)) return null;
   const [arg] = expr.arguments;
-  const loader =
-    expr.expression.kind === ts.SyntaxKind.ImportKeyword ||
-    (ts.isIdentifier(expr.expression) && expr.expression.text === "require");
-  return loader && arg !== undefined && ts.isStringLiteralLike(arg) && arg.text === "postgres";
+  if (arg === undefined || !ts.isStringLiteralLike(arg) || arg.text !== "postgres") return null;
+  if (expr.expression.kind === ts.SyntaxKind.ImportKeyword) {
+    return tookDefault ? "factory" : "namespace";
+  }
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "require") {
+    return tookDefault ? "factory" : "both";
+  }
+  return null;
 }
 
-/** Local names bound to postgres.js's default export in this file. */
-function postgresBindings(sf: ts.SourceFile): Set<string> {
-  const names = new Set<string>();
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isImportDeclaration(node) &&
-      ts.isStringLiteral(node.moduleSpecifier) &&
-      node.moduleSpecifier.text === "postgres" &&
-      node.importClause &&
-      !node.importClause.isTypeOnly
-    ) {
-      if (node.importClause.name) names.add(node.importClause.name.text);
-      const bindings = node.importClause.namedBindings;
-      if (bindings && ts.isNamedImports(bindings)) {
-        for (const el of bindings.elements) {
-          if ((el.propertyName ?? el.name).text === "default") names.add(el.name.text);
-        }
-      }
+type Bindings = { factories: Set<string>; namespaces: Set<string> };
+
+/** `import postgres from`, `import * as pg from`, `import { default as pg } from` "postgres". */
+function bindStaticImport(node: ts.ImportDeclaration, { factories, namespaces }: Bindings): void {
+  const clause = node.importClause;
+  if (!ts.isStringLiteral(node.moduleSpecifier) || node.moduleSpecifier.text !== "postgres") return;
+  if (!clause || clause.isTypeOnly) return;
+  if (clause.name) factories.add(clause.name.text);
+  const bindings = clause.namedBindings;
+  if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+  if (bindings && ts.isNamedImports(bindings)) {
+    for (const el of bindings.elements) {
+      if ((el.propertyName ?? el.name).text === "default") factories.add(el.name.text);
     }
+  }
+}
+
+/** Local names bound to postgres.js's factory, and to its module namespace. */
+function postgresBindings(sf: ts.SourceFile): Bindings {
+  const factories = new Set<string>();
+  const namespaces = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) bindStaticImport(node, { factories, namespaces });
     // const postgres = (await import("postgres")).default;  /  require("postgres")
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      loadsPostgresModule(node.initializer)
-    ) {
-      names.add(node.name.text);
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const kind = loadsPostgresModule(node.initializer);
+      if (kind === "factory" || kind === "both") factories.add(node.name.text);
+      if (kind === "namespace" || kind === "both") namespaces.add(node.name.text);
     }
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  return names;
+  return { factories, namespaces };
+}
+
+/** `postgres(…)`, or `pg.default(…)` on a namespace (or on the factory itself). */
+function isPostgresCall(node: ts.CallExpression, { factories, namespaces }: Bindings): boolean {
+  const callee = unwrap(node.expression);
+  if (ts.isIdentifier(callee)) return factories.has(callee.text);
+  if (ts.isPropertyAccessExpression(callee) && callee.name.text === "default") {
+    const target = unwrap(callee.expression);
+    return ts.isIdentifier(target) && (namespaces.has(target.text) || factories.has(target.text));
+  }
+  return false;
 }
 
 const norm = (text: string): string => text.replace(/\s+/g, "");
@@ -187,16 +222,12 @@ type Scan = { calls: number; violations: string[] };
 /** Every postgres() call in `source` that does not end on `ssl: postgresTlsOption(<url>)`. */
 function scanSource(fileName: string, source: string): Scan {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
-  const names = postgresBindings(sf);
+  const bindings = postgresBindings(sf);
   const result: Scan = { calls: 0, violations: [] };
-  if (names.size === 0) return result;
+  if (bindings.factories.size === 0 && bindings.namespaces.size === 0) return result;
 
   const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      names.has(node.expression.text)
-    ) {
+    if (ts.isCallExpression(node) && isPostgresCall(node, bindings)) {
       result.calls += 1;
       const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
       const [url, options] = node.arguments;
@@ -262,6 +293,10 @@ describe("every postgres() client passes the TLS option", () => {
       `const postgres = (await import("postgres")).default;\nconst a = postgres(url, {});`,
       // CommonJS
       `const pg = require("postgres");\nconst a = pg(url, { max: 1 });`,
+      // namespace import, called through .default
+      `import * as pg from "postgres";\nconst a = pg.default(url, { max: 1 });`,
+      // dynamic-import namespace, called through .default
+      `const pg = await import("postgres");\nconst a = pg.default(url);`,
     ];
     for (const source of planted) {
       const scan = scanSource("planted.ts", source);
