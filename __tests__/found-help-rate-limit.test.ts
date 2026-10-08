@@ -52,8 +52,8 @@ describe("isFoundHelpLookupThrottled", () => {
     await db.execute(sql`
       UPDATE public.rate_limit_buckets
          SET count = CASE WHEN bucket_key LIKE '%:minute:%'
-                          THEN ${FOUND_HELP_LOOKUP_LIMIT.maxPerMinute ?? 0}
-                          ELSE ${FOUND_HELP_LOOKUP_LIMIT.maxPerHour ?? 0} END
+                          THEN ${FOUND_HELP_LOOKUP_LIMIT.maxPerMinute ?? 0}::int
+                          ELSE ${FOUND_HELP_LOOKUP_LIMIT.maxPerHour ?? 0}::int END
        WHERE bucket_key LIKE ${PREFIX}
     `);
     expect(await isFoundHelpLookupThrottled()).toBe(true);
