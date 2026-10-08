@@ -295,7 +295,6 @@ export function CaretakerGrantScreen({
         onConsent={setConsent}
         onRun={(input) => void run(input)}
       />
-
     </Screen>
   );
 }
