@@ -387,34 +387,34 @@ export function tripPapersTickLabel(indexNewestFirst: number, total: number): st
  */
 export function groupLedgerEntries(entries: readonly LibretaEntryV1[]): LedgerItem[] {
   const items: LedgerItem[] = [];
-  let run: LibretaEntryV1[] = [];
-  let runKey: string | null = null;
+  // A run ALWAYS carries the trip-and-day key it was opened with: the group's
+  // `key` is that, never the newest tick's id, which changes with every new
+  // tick and would reset the screen's "Ver cada cambio" state (QA v14 review).
+  let run: { key: string; entries: LibretaEntryV1[] } | null = null;
   const flush = () => {
-    const head = run[0];
-    if (head !== undefined && run.length === 1) items.push({ kind: "entry", entry: head });
-    else if (head !== undefined) {
+    if (run === null) return;
+    const [head] = run.entries;
+    if (head !== undefined && run.entries.length === 1) {
+      items.push({ kind: "entry", entry: head });
+    } else if (head !== undefined) {
       items.push({
         kind: "papers",
-        entries: run,
-        label: tripPapersGroupLabel(run.length, factValue(head, "Destino")),
-        key: runKey ?? head.eventId,
+        entries: run.entries,
+        label: tripPapersGroupLabel(run.entries.length, factValue(head, "Destino")),
+        key: run.key,
       });
     }
-    run = [];
-    runKey = null;
+    run = null;
   };
   for (const entry of entries) {
     const key = tripPapersTickKey(entry);
-    if (key !== null && key === runKey) {
-      run.push(entry);
+    if (key !== null && run !== null && key === run.key) {
+      run.entries.push(entry);
       continue;
     }
     flush();
     if (key === null) items.push({ kind: "entry", entry });
-    else {
-      run = [entry];
-      runKey = key;
-    }
+    else run = { key, entries: [entry] };
   }
   flush();
   return items;

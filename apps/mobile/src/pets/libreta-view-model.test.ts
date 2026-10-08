@@ -365,6 +365,14 @@ describe("groupLedgerEntries — papers ticks drawn as one row", () => {
     ]);
   });
 
+  it("keys the group by trip and day, so a NEW tick does not change it (QA v14 review)", () => {
+    const before = groupLedgerEntries([aTick("t2"), aTick("t1")])[0];
+    const after = groupLedgerEntries([aTick("t3"), aTick("t2"), aTick("t1")])[0];
+    if (before?.kind !== "papers" || after?.kind !== "papers") throw new Error("expected papers");
+    expect(after.key).toBe(before.key);
+    expect(after.key).not.toContain("t3");
+  });
+
   it("leaves a single tick as its own asiento, title untouched", () => {
     expect(groupLedgerEntries([aTick("t1")])).toEqual([{ kind: "entry", entry: aTick("t1") }]);
   });
