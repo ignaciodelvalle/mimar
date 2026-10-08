@@ -1,7 +1,7 @@
 # Conventions canon — Database, RLS and the event spine
 
-> Snapshot: `d7dbf25f7` (`main`) · Facts: `docs/architecture/facts.json` generated 2026-10-07
-> Verified against code on 2026-10-07 by canon v4 + blind calibration · Status: reviewed
+> Snapshot: `d7dbf25f7` (`main`) · Facts: `docs/architecture/facts.json` generated 2026-10-08
+> Verified against code on 2026-10-08 by canon v4 + blind calibration · Status: reviewed
 > Numbers in this file are `<!-- fact:key -->` markers checked by `__tests__/architecture-facts.test.ts`.
 
 [← canon index](../conventions-canon.md) · scope `db` · 104 rules (52 ENFORCED, 22 PARTIAL, 30 UNENFORCED).
