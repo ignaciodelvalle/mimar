@@ -289,6 +289,7 @@ export function LostScreen({ publicToken }: { publicToken: string }) {
       {state.phase === "ready" && pane === "report-content" && reporting !== null ? (
         <ReportContentForm
           item={reporting}
+          petSex={state.view.petSex}
           busy={busy}
           onCancel={() => {
             setReporting(null);

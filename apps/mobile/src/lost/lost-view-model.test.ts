@@ -32,6 +32,7 @@ import {
   feedItemTitle,
   feedTruncationNote,
   foundAdjective,
+  foundConfirmLabel,
   lostAdjective,
   lostInputCodeMessage,
   posterNotLost,
@@ -344,11 +345,11 @@ describe("buildSetDisclosure", () => {
 describe("the feed", () => {
   it("says how many times a QR was scanned without counting rows", () => {
     // A burst is ONE row carrying its count.
-    expect(feedItemTitle({ kind: "scan", id: "s", at: "", count: 1, localityLabel: null })).toBe(
-      "Escanearon su QR",
-    );
     expect(
-      feedItemTitle({ kind: "scan", id: "s", at: "", count: 4, localityLabel: null }),
+      feedItemTitle({ kind: "scan", id: "s", at: "", count: 1, localityLabel: null }, "female"),
+    ).toBe("Escanearon su QR");
+    expect(
+      feedItemTitle({ kind: "scan", id: "s", at: "", count: 4, localityLabel: null }, "female"),
     ).toContain("4 veces");
   });
 
@@ -365,7 +366,12 @@ describe("the feed", () => {
       availabilityLabel: "indefinido",
       hasPhoto: true,
     };
-    expect(feedItemTitle(finder)).toBe("Vecina dice que la tiene");
+    expect(feedItemTitle(finder, "female")).toBe("Vecina dice que la tiene");
+    // QA v14 review: the pronoun follows the animal, never a fixed "la".
+    expect(feedItemTitle(finder, "male")).toBe("Vecina dice que lo tiene");
+    expect(foundConfirmLabel("male")).toBe("Sí, lo encontré");
+    expect(foundConfirmLabel("female")).toBe("Sí, la encontré");
+    expect(foundConfirmLabel(null)).toBe("Sí, lo/la encontré");
     expect(feedItemDetail(finder)).toContain("La tengo en casa");
     // The lead an owner follows. Withholding it here would make the app the one
     // surface where a lead cannot be followed.

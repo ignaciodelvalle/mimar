@@ -466,7 +466,7 @@ describe("LostScreen — the last-seen point on a map (M17)", () => {
     mockSend.mockResolvedValue(ack("mark_lost", true));
     render(<LostScreen publicToken={TOKEN} />);
     fireEvent.press(await screen.findByText("Marcar como perdida"));
-    fireEvent.changeText(screen.getByLabelText("Dónde la viste por última vez"), "La plaza");
+    fireEvent.changeText(screen.getByLabelText("Dónde se vio por última vez"), "La plaza");
     fireEvent.press(screen.getByText("Marcar como perdida"));
     await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
     expect(sentBody()).toMatchObject({ locationLat: null, locationLng: null });
@@ -480,7 +480,7 @@ describe("LostScreen — marcar perdida", () => {
     fireEvent.press(await screen.findByText("Marcar como perdida"));
 
     fireEvent.changeText(
-      screen.getByLabelText("Dónde la viste por última vez"),
+      screen.getByLabelText("Dónde se vio por última vez"),
       "Plaza San Martín",
     );
     // Publishing a phone is a decision somebody makes on this screen.
@@ -531,7 +531,7 @@ describe("LostScreen — marcar perdida", () => {
     expect(mockNav.pressBack().blocked).toBe(false);
 
     fireEvent.changeText(
-      screen.getByLabelText("Dónde la viste por última vez"),
+      screen.getByLabelText("Dónde se vio por última vez"),
       "Plaza San Martín",
     );
     expect(mockNav.pressBack().blocked).toBe(true);
@@ -646,12 +646,22 @@ describe("LostScreen — marcar encontrada is a two-step", () => {
     expect(await screen.findByText("Marcar como encontrada/o")).toBeOnTheScreen();
   });
 
+  it("a male dog's confirmation says 'lo', and no row says 'la viste' (QA v14 review)", async () => {
+    mockFetch.mockResolvedValue(ok(searching({ petSex: "male" })));
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como encontrado"));
+    expect(screen.getByText("Sí, lo encontré")).toBeOnTheScreen();
+    expect(screen.getByText(/avisamos a quienes lo estaban buscando/)).toBeOnTheScreen();
+    expect(screen.queryByText("Sí, la encontré")).toBeNull();
+    expect(screen.queryByText(/la viste/)).toBeNull();
+  });
+
   it("says the no-op sentence in the animal's own gender on a replay", async () => {
     mockFetch.mockResolvedValue(ok(searching({ petSex: "male" })));
     mockSend.mockResolvedValue(ack("mark_found", false, "active"));
     render(<LostScreen publicToken={TOKEN} />);
     fireEvent.press(await screen.findByText("Marcar como encontrado"));
-    fireEvent.press(screen.getByText("Sí, la encontré"));
+    fireEvent.press(screen.getByText("Sí, lo encontré"));
     expect(await screen.findByText("Ya estaba marcado como encontrado.")).toBeOnTheScreen();
   });
 });

@@ -70,9 +70,11 @@ import {
   feedItemTitle,
   feedTruncationNote,
   foundAdjective,
+  foundConfirmLabel,
   lostAdjective,
   noContactWarning,
   noWayToReachYou,
+  objectPronoun,
   posterNotLost,
   shareSearchMessage,
   situationHeadline,
@@ -243,10 +245,10 @@ function LostActions({
           <Callout tone="warn" title="¿Confirmás?">
             <Body>
               Se cierra la búsqueda, la credencial pública deja de mostrar el aviso y avisamos a
-              quienes la estaban buscando.
+              quienes {objectPronoun(view.petSex)} estaban buscando.
             </Body>
             <PrimaryButton
-              label="Sí, la encontré"
+              label={foundConfirmLabel(view.petSex)}
               disabled={busy}
               onPress={() => void onRun(unwrap(buildMarkFound()), null)}
             />
@@ -365,6 +367,7 @@ function FeedModule({
           <FeedRow
             key={item.id}
             item={item}
+            petSex={view.petSex}
             busy={busy}
             canReport={view.capabilities.canReportContent}
             onReport={() => onReportItem(item)}
@@ -519,11 +522,13 @@ function PosterModule({
 
 function FeedRow({
   item,
+  petSex,
   busy,
   canReport,
   onReport,
 }: {
   item: LostFeedItemV1;
+  petSex: string | null;
   busy: boolean;
   /**
    * `capabilities.canReportContent` — whether this CALLER may report at all
@@ -537,7 +542,7 @@ function FeedRow({
   const contact = feedItemContact(item);
   return (
     <View style={styles.feedRow}>
-      <Text style={styles.feedTitle}>{feedItemTitle(item)}</Text>
+      <Text style={styles.feedTitle}>{feedItemTitle(item, petSex)}</Text>
       <MetaLine>{formatIsoDateTime(item.at)}</MetaLine>
       {detail ? <Body>{detail}</Body> : null}
       {contact ? <ContactRow label="Contacto" value={contact} /> : null}

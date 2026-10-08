@@ -249,19 +249,23 @@ export function disclosureRows(
   }));
 }
 
-/** The title of one feed row. */
-export function feedItemTitle(item: LostFeedItemV1): string {
+/**
+ * The title of one feed row. The pronoun agrees with the animal's sex
+ * (`objectPronoun`) — never a fixed "la" over a male dog (QA v14 review).
+ */
+export function feedItemTitle(item: LostFeedItemV1, petSex: string | null): string {
+  const pronoun = objectPronoun(petSex);
   switch (item.kind) {
     case "scan":
       // A burst is ONE row carrying its count, so the copy has to be able to say
       // "4 escaneos" without the screen counting rows itself.
       return item.count === 1 ? "Escanearon su QR" : `Escanearon su QR ${item.count} veces`;
     case "sighting":
-      return "Alguien la vio";
+      return `Alguien ${pronoun} vio`;
     case "finder":
       // THE ONE THAT ENDS THE SEARCH. Named as strongly as it deserves: the web
       // sorts it to the top of the feed for the same reason.
-      return `${item.finderName} dice que la tiene`;
+      return `${item.finderName} dice que ${pronoun} tiene`;
   }
 }
 
@@ -359,6 +363,14 @@ export const FEED_EMPTY_LABEL = "Todavía no hay avistajes ni escaneos.";
  */
 export function shareSearchMessage(view: PetLostV1, url: string): string {
   return `Estamos buscando a ${view.petName}, está ${lostAdjective(view.petSex)}. Si ${objectPronoun(view.petSex)} viste, avisá desde su credencial: ${url}`;
+}
+
+/**
+ * "Sí, lo encontré" / "Sí, la encontré" — the found confirmation in the
+ * animal's own gender, like the "Marcar como encontrado/a" button above it.
+ */
+export function foundConfirmLabel(sex: string | null): string {
+  return `Sí, ${objectPronoun(sex)} encontré`;
 }
 
 /** "lo" / "la" / "lo/la" — the object pronoun for the animal, by its sex. */

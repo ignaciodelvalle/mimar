@@ -147,14 +147,14 @@ export function MarkLostForm({
           publique: el interruptor está más abajo y arranca apagado
           (consentimiento afirmativo), así que la frase dice "si activás". */}
       <LostPointPicker
-        label="Marcá dónde la viste por última vez"
+        label="Marcá dónde se vio por última vez"
         draft={draft}
         setDraft={setDraft}
         startQuery={view.episode?.jurisdictionLocality ?? null}
         fillJurisdiction
       />
       <TextField
-        label="Dónde la viste por última vez"
+        label="Dónde se vio por última vez"
         value={draft.locationDescription}
         onChangeText={(v) => set("locationDescription", v)}
         placeholder="La plaza, la esquina del kiosco, el portón de casa"
@@ -419,7 +419,7 @@ export function ReportForm({
         multiline
         value={draft.note}
         onChangeText={(v) => setDraft((c) => ({ ...c, note: v }))}
-        placeholder="Un vecino la vio cruzando"
+        placeholder="Un vecino contó que cruzó la avenida"
       />
 
       {message === null ? null : (
@@ -462,11 +462,14 @@ export function ReportForm({
  */
 export function ReportContentForm({
   item,
+  petSex,
   busy,
   onCancel,
   onRun,
 }: {
   item: LostFeedItemV1;
+  /** The animal's sex, so the echoed row title agrees with it. */
+  petSex: string | null;
   busy: boolean;
   onCancel: () => void;
   onRun: RunFn;
@@ -499,7 +502,7 @@ export function ReportContentForm({
         {/* The row being reported, echoed — a list of five motives with no
             reminder of WHICH message they are about is how somebody reports the
             wrong one. */}
-        <Body>{feedItemTitle(item)}</Body>
+        <Body>{feedItemTitle(item, petSex)}</Body>
         <MetaLine>{formatIsoDateTime(item.at)}</MetaLine>
         <Body>{REPORT_INTRO}</Body>
       </Callout>
