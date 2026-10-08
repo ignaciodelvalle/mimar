@@ -26,15 +26,7 @@ import { apiFailureMessage } from "../api/client";
 import { fetchMyFoster, sendFosterCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, EmptyState, Row, StaleNotice } from "../ui/components";
-import {
-  Callout,
-  Choice,
-  PrimaryButton,
-  Screen,
-  SecondaryButton,
-  TextField,
-  Title,
-} from "../ui/kit";
+import { Callout, Choice, PrimaryButton, Screen, SecondaryButton, TextField } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { ListSkeleton } from "../ui/skeleton";
 import { COLORS, SPACE } from "../ui/theme";
@@ -68,7 +60,17 @@ function ackLabel(input: FosterCommandInput): string {
     : "Rechazaste la propuesta. Le avisamos al refugio.";
 }
 
-export function FosterScreen({ onOpenPet }: { onOpenPet: (petPublicToken: string) => void }) {
+export function FosterScreen({
+  onOpenPet,
+  onOfferAsFoster,
+}: {
+  onOpenPet: (petPublicToken: string) => void;
+  /**
+   * "Ofrecerme como tránsito" — the web form (`/cuenta/ofrecerme-como-transito`)
+   * the route opens. The screen never navigates itself; the route binds it.
+   */
+  onOfferAsFoster: () => void;
+}) {
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
@@ -142,7 +144,6 @@ export function FosterScreen({ onOpenPet }: { onOpenPet: (petPublicToken: string
   if (state.phase === "failed") {
     return (
       <Screen>
-        <Title>Tránsito</Title>
         <Callout tone="err">
           <Body>{state.message}</Body>
         </Callout>
@@ -167,7 +168,7 @@ export function FosterScreen({ onOpenPet }: { onOpenPet: (petPublicToken: string
         />
       }
     >
-      <Title>Tránsito</Title>
+      {/* No body title: the stack header already says "Tránsito". */}
       <Body>Cuidás mascotas de un refugio por un tiempo, mientras encuentran un hogar.</Body>
 
       {state.staleFailure === null ? null : (
@@ -184,6 +185,11 @@ export function FosterScreen({ onOpenPet }: { onOpenPet: (petPublicToken: string
         <EmptyState
           headline="Todavía no tenés tránsitos"
           body="Cuando un refugio te proponga cuidar una mascota, la vas a ver acá."
+          // THE WAY IN, where the absence is stated: nobody is proposed a
+          // tránsito who never offered to be one. The offer form lives on the
+          // web for now, so this opens it there.
+          actionLabel="Ofrecerme como tránsito"
+          onAction={onOfferAsFoster}
         />
       )}
 

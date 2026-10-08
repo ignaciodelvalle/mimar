@@ -83,6 +83,7 @@ function loads(payload: MyFosterV1) {
 }
 
 const noopOpenPet = () => {};
+const noopOffer = () => {};
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -92,15 +93,31 @@ beforeEach(() => {
 describe("loading and empty", () => {
   it("shows nothing to answer as an invitation, not a bare absence", async () => {
     loads(hub());
-    render(<FosterScreen onOpenPet={noopOpenPet} />);
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
     await waitFor(() => screen.getByText("Todavía no tenés tránsitos"));
+  });
+
+  it("offers the way in where the absence is stated", async () => {
+    const onOffer = jest.fn();
+    loads(hub());
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={onOffer} />);
+    await waitFor(() => screen.getByText("Todavía no tenés tránsitos"));
+    fireEvent.press(screen.getByRole("button", { name: "Ofrecerme como tránsito" }));
+    expect(onOffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not repeat 'Tránsito' in the body — the header says it", async () => {
+    loads(hub());
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
+    await waitFor(() => screen.getByText("Todavía no tenés tránsitos"));
+    expect(screen.queryByText("Tránsito")).toBeNull();
   });
 });
 
 describe("a pending proposal", () => {
   it("renders it with no capability gate — both controls always offered", async () => {
     loads(hub({ proposals: [aProposal()] }));
-    render(<FosterScreen onOpenPet={noopOpenPet} />);
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
     await waitFor(() => screen.getByText("Refugio Esperanza te propone cuidar a Pampa"));
     expect(screen.getByText("Aceptar propuesta")).toBeTruthy();
     expect(screen.getByText("Rechazar")).toBeTruthy();
@@ -118,7 +135,7 @@ describe("a pending proposal", () => {
       },
     });
 
-    render(<FosterScreen onOpenPet={noopOpenPet} />);
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
     await waitFor(() => screen.getByText("Aceptar propuesta"));
 
     fireEvent.press(screen.getByText("Aceptar propuesta"));
@@ -142,7 +159,7 @@ describe("a pending proposal", () => {
 
   it("rejecting without a reason refuses locally and sends nothing", async () => {
     loads(hub({ proposals: [aProposal()] }));
-    render(<FosterScreen onOpenPet={noopOpenPet} />);
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
     await waitFor(() => screen.getByText("Rechazar"));
 
     fireEvent.press(screen.getByText("Rechazar"));
@@ -165,7 +182,7 @@ describe("a pending proposal", () => {
       },
     });
 
-    render(<FosterScreen onOpenPet={noopOpenPet} />);
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
     await waitFor(() => screen.getByText("Rechazar"));
     fireEvent.press(screen.getByText("Rechazar"));
     await waitFor(() => screen.getByText("No tengo capacidad ahora"));
@@ -190,7 +207,7 @@ describe("a pending proposal", () => {
     loads(hub({ proposals: [aProposal()] }));
     mockSend.mockResolvedValue({ outcome: "api-error", code: "foster_already_resolved" });
 
-    render(<FosterScreen onOpenPet={noopOpenPet} />);
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
     await waitFor(() => screen.getByText("Aceptar propuesta"));
     fireEvent.press(screen.getByText("Aceptar propuesta"));
     await waitFor(() => screen.getByText("Confirmar aceptación"));
@@ -204,7 +221,7 @@ describe("a pending proposal", () => {
 describe("fosters", () => {
   it("lists an active one under Tránsito activo, from the flag", async () => {
     loads(hub({ fosters: [aFoster({ active: true })] }));
-    render(<FosterScreen onOpenPet={noopOpenPet} />);
+    render(<FosterScreen onOpenPet={noopOpenPet} onOfferAsFoster={noopOffer} />);
     await waitFor(() => screen.getByText("Tránsito activo"));
     expect(screen.getByText("Estás cuidando a Rocky")).toBeTruthy();
     expect(screen.queryByText("Historial")).toBeNull();
@@ -217,7 +234,7 @@ describe("fosters", () => {
         fosters: [aFoster({ active: false, endedAt: "2026-09-10T12:00:00.000Z" })],
       }),
     );
-    render(<FosterScreen onOpenPet={onOpenPet} />);
+    render(<FosterScreen onOpenPet={onOpenPet} onOfferAsFoster={noopOffer} />);
     await waitFor(() => screen.getByText("Historial"));
     expect(screen.getByText("Cuidaste a Rocky")).toBeTruthy();
     expect(screen.queryByText("Tránsito activo")).toBeNull();
