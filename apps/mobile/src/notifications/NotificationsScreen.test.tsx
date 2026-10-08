@@ -68,7 +68,8 @@ jest.mock("@react-native-community/netinfo", () => ({
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
 import type { MyNotificationV1, MyNotificationsV1 } from "@dim/contract/api";
-import { NotificationsScreen } from "./NotificationsScreen";
+import { MARK_READ_WAIT_MS, NotificationsScreen } from "./NotificationsScreen";
+import { notificationRelativeDateLabel } from "./notifications-view-model";
 
 function aNotification(over: Partial<MyNotificationV1> = {}): MyNotificationV1 {
   return {
@@ -332,7 +333,10 @@ describe("NotificationsScreen — tapping a row opens the detail and marks it re
       payload: { command: "mark_read", changed: true, unreadCount: 0 },
     });
     renderScreen((route) => pushed.push(route));
-    fireEvent.press(await screen.findByText("Avistaje de Pampa"));
+    const row = await screen.findByText("Avistaje de Pampa");
+    await act(async () => {
+      fireEvent.press(row);
+    });
 
     expect(pushed).toHaveLength(1);
     expect(pushed[0]?.startsWith("/aviso/n-1?")).toBe(true);
@@ -392,6 +396,83 @@ describe("NotificationsScreen — tapping a row opens the detail and marks it re
   });
 });
 
+describe("NotificationsScreen — the tap waits for the mark-read (the bell)", () => {
+  it("does not navigate before the write lands", async () => {
+    const pushed: string[] = [];
+    let land: ((value: unknown) => void) | undefined;
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
+    });
+    mockSend.mockReturnValue(
+      new Promise((resolve) => {
+        land = resolve;
+      }),
+    );
+    renderScreen((route) => pushed.push(route));
+    const row = await screen.findByText("Avistaje de Pampa");
+    await act(async () => {
+      fireEvent.press(row);
+    });
+    // The bell reads on the home's focus: a count read before the write
+    // landed would still show this notification as unread.
+    expect(pushed).toHaveLength(0);
+
+    await act(async () => {
+      land?.({ outcome: "ok", payload: { command: "mark_read", changed: true, unreadCount: 0 } });
+    });
+    expect(pushed).toHaveLength(1);
+  });
+
+  it("navigates anyway once the wait runs out, and opens only once", async () => {
+    const pushed: string[] = [];
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
+    });
+    mockSend.mockReturnValue(new Promise(() => {}));
+    renderScreen((route) => pushed.push(route));
+    const row = await screen.findByText("Avistaje de Pampa");
+    fireEvent.press(row);
+    // A second tap during the wait is the same open, not another push.
+    fireEvent.press(row);
+    await waitFor(() => expect(pushed).toHaveLength(1), { timeout: MARK_READ_WAIT_MS + 1500 });
+    expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("NotificationsScreen — what a screen reader hears", () => {
+  it("reads what the row shows: unread, the title and the relative date — not the body", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        total: 2,
+        unreadCount: 1,
+        notifications: [
+          aNotification({ id: "n-u", severity: "info", title: "Vacuna próxima" }),
+          aNotification({ id: "n-r", severity: "info", title: "Turno confirmado", read: true }),
+        ],
+      }),
+    });
+    renderScreen();
+    await screen.findByText("Vacuna próxima");
+    const date = notificationRelativeDateLabel("2026-08-20T10:00:00.000Z", new Date());
+    expect(screen.getByLabelText(`No leída. Vacuna próxima. ${date}`)).toBeTruthy();
+    expect(screen.getByLabelText(`Turno confirmado. ${date}`)).toBeTruthy();
+    expect(screen.queryByLabelText(/Alguien la vio en Palermo/)).toBeNull();
+  });
+
+  it("says 'Urgente' on an unread urgent row, which only colour says on screen", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
+    });
+    renderScreen();
+    await screen.findByText("Avistaje de Pampa");
+    expect(screen.getByLabelText(/^No leída\. Urgente\. Avistaje de Pampa\. /)).toBeTruthy();
+  });
+});
+
 describe("NotificationsScreen — what the row hands the detail is the server's", () => {
   it("hands over the pet link only when the server says the destination is alive", async () => {
     // The row HAS a pet. `pet_transfer_accepted` means custody LEFT the reader,
@@ -413,9 +494,15 @@ describe("NotificationsScreen — what the row hands the detail is the server's"
         ],
       }),
     });
-    mockSend.mockReturnValue(new Promise(() => {}));
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "mark_read", changed: true, unreadCount: 0 },
+    });
     renderScreen((route) => pushed.push(route));
-    fireEvent.press(await screen.findByText("Viva"));
+    const alive = await screen.findByText("Viva");
+    await act(async () => {
+      fireEvent.press(alive);
+    });
     fireEvent.press(screen.getByText("Transferida"));
 
     expect(detailParams(pushed[0] ?? "")).toMatchObject({
