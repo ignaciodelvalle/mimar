@@ -258,6 +258,28 @@ describe("updatePet", () => {
       expect(result.notifications[0].userId).toBe("user-1");
     });
 
+    it("cites the law of the pet's STORED jurisdiction, not the posted one", async () => {
+      const actor = makeActor({ accessPath: "owner" });
+      actor.existingPet = makeExistingPet({
+        potentiallyDangerousBreed: false,
+        jurisdictionProvince: "CABA",
+      });
+
+      const result = await updatePet(
+        makeInput({
+          // The profile edit cannot move a pet (FULL-LOCK); a posted province is ignored.
+          parsed: makeParsedPet({ name: "Lulú", jurisdictionProvince: "Buenos Aires" }),
+          potentiallyDangerousBreed: true,
+        }),
+        { repo: makeFakeRepo(), actor, transaction: async (cb) => await cb({} as never) },
+      );
+
+      if (!result.ok) throw new Error("unreachable");
+      const text = `${result.notifications[0].title} ${result.notifications[0].body}`;
+      expect(text).toContain("Ley 4078");
+      expect(text).not.toContain("14.107");
+    });
+
     it("suppresses PPP notification when accessPath=org", async () => {
       const repo = makeFakeRepo();
       const actor = makeActor({ accessPath: "org" });

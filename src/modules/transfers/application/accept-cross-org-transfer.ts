@@ -431,7 +431,7 @@ export async function acceptCrossOrgTransfer(
         notificationType: "cross_org_transfer_accepted_receiver",
         severity: "success",
         title: "Transferencia confirmada",
-        body: `La pet pasó formalmente a custodia de ${organization.displayName}.`,
+        body: `La mascota pasó formalmente a custodia de ${organization.displayName}.`,
         ctaLabel: "Ver caso",
         ctaUrl: `/casos/${caseRow.publicCode}`,
         relatedCaseId: caseRow.id,

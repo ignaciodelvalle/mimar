@@ -22,6 +22,7 @@
 
 import { matchesDbError } from "@/lib/infra/db-errors";
 
+import { pppRegistrationNotice } from "../domain/ppp-notice";
 import type { NewNotification, RegisterPetInput, UseCaseResult } from "../domain/types";
 import type { PetsRepository } from "../infrastructure/pets-repository";
 
@@ -149,11 +150,18 @@ export async function registerPet(
       // PPP notification queued inside tx so relatedPetId is available.
       // Suppressed for foster_in_transit — legal obligation belongs to owner.
       if (potentiallyDangerousBreed && parsed.custodyKind !== "foster_in_transit") {
+        // Copy by the pet's own jurisdiction (surface audit 2026-10-07, B).
+        const notice = pppRegistrationNotice({
+          petName: parsed.name,
+          breed: parsed.breed,
+          province: parsed.jurisdictionProvince,
+          autoMarked: true,
+        });
         pendingNotifications.push({
           userId: user.id,
           notificationType: "ppp_registration_reminder",
-          title: `${parsed.name}: registrá tu PPP en el provincial`,
-          body: `Tu mascota está marcada como raza potencialmente peligrosa por ${parsed.breed ?? "su raza"}. La Ley CABA 4078 / Ley Provincial 14.107 requiere que la inscribas en el registro provincial correspondiente. miMAR la marcó automáticamente con la flag oficial.`,
+          title: notice.title,
+          body: notice.body,
           severity: "warning",
           ctaLabel: "Más info sobre PPP",
           ctaUrl: "https://www.argentina.gob.ar/justicia/derechofacil/leysimple/maltrato-animales",

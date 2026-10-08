@@ -173,6 +173,37 @@ describe("registerPet", () => {
       expect(result.notifications[0].relatedEventId).toBe("event-uuid-1");
     });
 
+    it("cites only the law of the pet's jurisdiction, and says it in Spanish", async () => {
+      const notify = async (jurisdictionProvince: string | null) => {
+        const result = await registerPet(
+          makeInput({
+            potentiallyDangerousBreed: true,
+            parsed: makeParsedPet({ custodyKind: "owner", name: "Rex", jurisdictionProvince }),
+          }),
+          {
+            repo: makeFakeRepo(),
+            actor: { user: { id: "user-1" } },
+            transaction: async (cb) => await cb({} as never),
+          },
+        );
+        if (!result.ok) throw new Error("unreachable");
+        const [n] = result.notifications;
+        return `${n.title} ${n.body}`;
+      };
+      const pba = await notify("Buenos Aires");
+      expect(pba).toContain("Ley 14.107");
+      expect(pba).not.toContain("4078");
+      const caba = await notify("CABA");
+      expect(caba).toContain("Ley 4078");
+      expect(caba).not.toContain("14.107");
+      const mendoza = await notify("Mendoza");
+      expect(mendoza).not.toMatch(/4078|14\.107|9685/);
+      for (const text of [pba, caba, mendoza]) {
+        expect(text).not.toMatch(/\bflag\b/i);
+        expect(text).toContain("marca oficial");
+      }
+    });
+
     it("suppresses PPP notification when custodyKind=foster_in_transit", async () => {
       const repo = makeFakeRepo();
       const result = await registerPet(
