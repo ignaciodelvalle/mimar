@@ -20,6 +20,7 @@ import { PPP_DECLARED_HINT, attestationCountsAsCompliant } from "@/lib/domain/pp
 import { type ProvenanceTier, provenanceTier } from "@/lib/domain/provenance";
 import type { ReminderVariant } from "@/lib/domain/vaccine-reminder-state";
 import { computeConfidence } from "@/lib/events/event-confidence";
+import { isRabiesVaccineName } from "@/lib/reference/lookups";
 import { addCalendarMonths } from "@/lib/utils/calendar-months";
 import {
   formatDateArOmitCurrentYear,
@@ -471,14 +472,16 @@ function declaradaCard(
   };
 }
 
-// The latest rabies vaccination event (by occurredAt), if any.
+// The latest rabies vaccination event (by occurredAt), if any. Read through
+// `isRabiesVaccineName`, which keys names exactly as the libreta's catalog
+// resolution does — an accent or a capital can no longer make the front say
+// "Declarada" while the back says "Sin confirmar" (surface audit 2026-10-07, A).
 function latestRabiesDose(events: ComplianceEvent[]): ComplianceEvent | undefined {
   return events
     .filter((e) => {
       if (e.eventType !== "vaccination_administered") return false;
       const p = (e.payload ?? {}) as Record<string, unknown>;
-      const name = typeof p.vaccine_name === "string" ? p.vaccine_name.toLowerCase() : "";
-      return /antirr[aá]b|rabi/.test(name);
+      return typeof p.vaccine_name === "string" && isRabiesVaccineName(p.vaccine_name);
     })
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())[0];
 }
