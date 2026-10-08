@@ -127,15 +127,21 @@ const MIN_ENTRIES = 15;
  * Exact `key:glyph` pairs, sorted by key, as of the last reviewed change; update
  * it in the SAME commit that changes any glyph or key, so the swap lands in THIS
  * file's diff next to the rules that decide what a glyph may mean. Last change:
- * `info: Info` (grouped casos 2026-10-06); before it, `fallecimiento → Flower2`.
+ * the owner action panel's row glyphs and ListRow's `chevron-right`
+ * (pulido-kit-listas 2026-10-07); before it, `info: Info` (grouped casos
+ * 2026-10-06).
  */
 const PINNED_TABLE = [
   "alert:AlertTriangle",
   "alert-triangle:AlertTriangle",
+  "bell:Bell",
+  "camara:Camera",
   "casa:Home",
   "check:Check",
   "check-circle:CheckCircle",
+  "chevron-right:ChevronRight",
   "corazon:Heart",
+  "door-open:DoorOpen",
   "edit:Pencil",
   "ellipsis:MoreHorizontal",
   "embarazo:CalendarHeart",
@@ -150,6 +156,11 @@ const PINNED_TABLE = [
   "perdida:Siren",
   "share:Share2",
   "shield:Shield",
+  "tag:Tag",
+  "telefono:Phone",
+  "trato:Handshake",
+  "usuarios:Users",
+  "valija:Luggage",
   "ver:Eye",
 ];
 

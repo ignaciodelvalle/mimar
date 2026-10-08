@@ -67,7 +67,7 @@ import {
 } from "react-native";
 import { type Edge, SafeAreaView } from "react-native-safe-area-context";
 
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import {
   dateInputToLocalDate,
   localDateToDateInput,
@@ -1074,19 +1074,36 @@ export function pressedOpacityUnlessAndroidRipple({ pressed }: PressableStateCal
  * reached for a `Card` — so one entry in a list of eleven pills rendered as a
  * bordered information box. That is the whole of the "se ve diferente, como en
  * una caja" report: not a styling mistake, a missing primitive.
+ *
+ * TWO SLOTS, BOTH DECORATIVE (pulido-kit-listas, 2026-10-07). `icon` draws a
+ * glyph from the shared vocabulary before the text; `trailing` draws whatever
+ * the row ends in. A LIVE ROW ENDS IN A CHEVRON BY DEFAULT — the anatomy note
+ * below anticipated it — because a destination that looks like a caption is
+ * how BuscarTurnoScreen came to draw its own serif row with a typed "›".
+ * `trailing={null}` opts a live row out; an inert row never gets the default,
+ * since a chevron on a row that goes nowhere is a promise the row cannot keep.
+ * Neither slot reaches a screen reader: the label and caption already say what
+ * the row is, and a glyph read aloud is noise.
  */
 export function ListRow({
   label,
   caption,
   accessibilityHint,
   onPress,
+  icon,
+  trailing,
 }: {
   label: string;
   caption?: string;
   accessibilityHint?: string;
   onPress?: () => void;
+  /** A name from the shared icon vocabulary, drawn before the text. */
+  icon?: IconName;
+  /** What the row ends in. Defaults to a chevron on a live row; `null` hides it. */
+  trailing?: ReactNode;
 }) {
   const isInert = onPress === undefined;
+  const end = trailing === undefined ? isInert ? null : <ListRowChevron /> : trailing;
   // M10 (native-feel audit, 2026-09-24): a row is a destination — tapping one
   // must not leave a keyboard open over wherever it goes next. Dismissing here,
   // once, is the shared-primitive half of the same fix `Choice` gets below;
@@ -1108,6 +1125,16 @@ export function ListRow({
       onPress={handlePress}
       style={(state) => [styles.listRow, pressedOpacityUnlessAndroidRipple(state)]}
     >
+      {icon === undefined ? null : (
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.listRowIcon}
+          testID="list-row-icon"
+        >
+          <Icon name={icon} size="md" color={isInert ? COLORS.inkFaint : COLORS.inkMuted} />
+        </View>
+      )}
       {/* LABEL ABOVE CAPTION, always in a column — see `listRowText`. The
           column is rendered whether or not there is a caption so the row's
           anatomy does not change shape with its content, and so a trailing
@@ -1125,8 +1152,23 @@ export function ListRow({
           </Text>
         )}
       </View>
+      {end === null || end === false ? null : (
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.listRowTrailing}
+          testID="list-row-trailing"
+        >
+          {end}
+        </View>
+      )}
     </Pressable>
   );
+}
+
+/** The default trailing element of a live `ListRow`. */
+function ListRowChevron() {
+  return <Icon name="chevron-right" size="sm" color={COLORS.inkFaint} />;
 }
 
 export type ButtonTone = "primary" | "seal";
@@ -1640,8 +1682,16 @@ const styles = StyleSheet.create({
    * caption ~108 points, about 17 characters a line, so two lines show ~34 of
    * the 90 — the sentence that says where the real control lives, truncated.
    * So the two stack, and this column takes the shrink for both of them.
+   *
+   * `flex: 1` AND NOT `flexShrink: 1` since the trailing slot (2026-10-07): the
+   * column now also GROWS, so a chevron sits at the row's far edge instead of
+   * right after a short label. Grow-and-shrink is still the column's job alone.
    */
-  listRowText: { flexShrink: 1, gap: 2 },
+  listRowText: { flex: 1, gap: 2 },
+  // Fixed-width ends: neither the glyph nor the chevron may be squeezed by a
+  // label that wraps at a large font scale — the text column takes the shrink.
+  listRowIcon: { flexShrink: 0, width: 20, alignItems: "center" },
+  listRowTrailing: { flexShrink: 0, alignItems: "flex-end", justifyContent: "center" },
   listRowLabel: { fontFamily: FONTS.sansMedium, fontSize: TYPE.md, color: COLORS.ink },
   listRowLabelMuted: { fontFamily: FONTS.sans, fontSize: TYPE.md, color: COLORS.inkMuted },
   listRowCaption: {

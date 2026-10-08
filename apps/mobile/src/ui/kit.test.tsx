@@ -22,6 +22,8 @@
 //     must not. Letting the label shrink too was the first fix and it wraps
 //     "Terminar una medicación" — the row's primary text — so a later
 //     "helpful" flexShrink on the label has to fail here.
+//   · The two slots (2026-10-07): a live row ends in a chevron unless told
+//     otherwise, an inert one never does, and neither slot is read aloud.
 //   · `pullToRefresh` as a pure element factory: the props it puts on the
 //     control, and that the control actually reaches the Screen's scroll view.
 //     Five detail screens replaced an "Actualizar" button with this gesture; if
@@ -149,7 +151,9 @@ describe("ListRow — the inert row says why", () => {
     // wrapped lines sit on each other).
     render(<ListRow label={LABEL} caption={CAPTION} />);
     const caption = screen.getByText(CAPTION);
-    expect(StyleSheet.flatten(columnOf(caption).props.style)).toMatchObject({ flexShrink: 1 });
+    // `flex: 1` since the trailing slot (2026-10-07): grow AND shrink, so the
+    // chevron sits at the far edge. Shrink is still the part this case is about.
+    expect(StyleSheet.flatten(columnOf(caption).props.style)).toMatchObject({ flex: 1 });
     expect(typeof caption.props.numberOfLines).toBe("number");
     expect(caption.props.numberOfLines).toBeGreaterThanOrEqual(2);
     const style = StyleSheet.flatten(caption.props.style) as { lineHeight?: number };
@@ -180,6 +184,66 @@ describe("ListRow — the inert row says why", () => {
     // direction lives one level up, on the Pressable.
     const style = StyleSheet.flatten(column.props.style) as { flexDirection?: string };
     expect(style.flexDirection).toBeUndefined();
+  });
+});
+
+// Both slots are hidden from the accessibility tree on purpose, and RNTL's
+// queries skip hidden elements by default — so every query here opts in.
+const HIDDEN = { includeHiddenElements: true } as const;
+
+describe("ListRow — the icon and trailing slots (2026-10-07)", () => {
+  it("ends a live row in a chevron by default", () => {
+    render(<ListRow label="Foto" onPress={() => {}} />);
+    expect(screen.getByTestId("list-row-trailing", HIDDEN)).toBeOnTheScreen();
+  });
+
+  it("draws NO chevron on an inert row — it goes nowhere", () => {
+    render(<ListRow label={LABEL} caption={CAPTION} />);
+    expect(screen.queryByTestId("list-row-trailing", HIDDEN)).toBeNull();
+  });
+
+  it("lets a live row opt out of the chevron with trailing={null}", () => {
+    render(<ListRow label="Foto" onPress={() => {}} trailing={null} />);
+    expect(screen.queryByTestId("list-row-trailing", HIDDEN)).toBeNull();
+  });
+
+  it("draws a caller's trailing element in place of the chevron", () => {
+    render(<ListRow label="Contactos" onPress={() => {}} trailing={<Text>2</Text>} />);
+    const two = screen.getByText("2", HIDDEN);
+    expect(screen.getByTestId("list-row-trailing", HIDDEN)).toContainElement(two);
+    expect(screen.queryByText("2")).toBeNull(); // decorative: not read aloud
+  });
+
+  it("draws the icon before the text, and only when asked", () => {
+    render(<ListRow label="Foto" icon="camara" onPress={() => {}} />);
+    const row = screen.getByRole("button");
+    const icon = screen.getByTestId("list-row-icon", HIDDEN);
+    const children = row.children as unknown as { props: { testID?: string } }[];
+    expect(children[0]?.props.testID).toBe("list-row-icon");
+    expect(icon).toBeOnTheScreen();
+    screen.unmount();
+    render(<ListRow label="Foto" onPress={() => {}} />);
+    expect(screen.queryByTestId("list-row-icon", HIDDEN)).toBeNull();
+  });
+
+  it("keeps both slots away from the screen reader — the label says it all", () => {
+    render(<ListRow label="Foto" icon="camara" onPress={() => {}} />);
+    for (const id of ["list-row-icon", "list-row-trailing"]) {
+      const slot = screen.getByTestId(id, HIDDEN);
+      expect(slot.props.importantForAccessibility).toBe("no-hide-descendants");
+      expect(slot.props.accessibilityElementsHidden).toBe(true);
+    }
+    // The row's name is still its label, nothing more.
+    expect(screen.getByRole("button", { name: "Foto" })).toBeOnTheScreen();
+  });
+
+  it("never lets the slots shrink — the text column gives way instead", () => {
+    render(<ListRow label="Foto" icon="camara" onPress={() => {}} />);
+    for (const id of ["list-row-icon", "list-row-trailing"]) {
+      expect(StyleSheet.flatten(screen.getByTestId(id, HIDDEN).props.style)).toMatchObject({
+        flexShrink: 0,
+      });
+    }
   });
 });
 

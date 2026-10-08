@@ -297,20 +297,35 @@ export function StaleNotice({ message, onRetry }: { message: string; onRetry?: (
  */
 export type EmptyStateSecondary = { prompt: string; linkLabel: string; onPress: () => void };
 
+type EmptyStateProps =
+  | {
+      compact?: false;
+      headline: string;
+      body: string;
+      actionLabel?: string;
+      onAction?: () => void;
+      secondary?: EmptyStateSecondary;
+    }
+  | {
+      /**
+       * One grey line and nothing else — for an empty SECTION among others on
+       * the same screen (Transferencias: Recibidas, Invitaciones, Enviadas).
+       * Three full boxes, each with a serif headline and a paragraph, made a
+       * screen with nothing in it the longest screen in the app; the sentence
+       * that matters is the headline, and the explanation belongs to the screen
+       * once, not to every section. No body and no action BY TYPE: a compact
+       * empty state that grew a button would be the full one again.
+       */
+      compact: true;
+      headline: string;
+    };
+
 /** An absence that offers a next step. See the header. */
-export function EmptyState({
-  headline,
-  body,
-  actionLabel,
-  onAction,
-  secondary,
-}: {
-  headline: string;
-  body: string;
-  actionLabel?: string;
-  onAction?: () => void;
-  secondary?: EmptyStateSecondary;
-}) {
+export function EmptyState(props: EmptyStateProps) {
+  if (props.compact === true) {
+    return <Text style={styles.emptyCompact}>{props.headline}</Text>;
+  }
+  const { headline, body, actionLabel, onAction, secondary } = props;
   return (
     <View style={styles.empty}>
       <Text style={styles.emptyHeadline}>{headline}</Text>
@@ -447,6 +462,12 @@ const styles = StyleSheet.create({
     fontSize: TYPE.md,
     lineHeight: TYPE.md * LEADING.md,
     color: COLORS.inkSoft,
+  },
+  emptyCompact: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.md,
+    lineHeight: TYPE.md * LEADING.md,
+    color: COLORS.inkMuted,
   },
   emptySecondary: {
     alignSelf: "stretch",
