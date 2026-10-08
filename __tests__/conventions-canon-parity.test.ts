@@ -144,7 +144,12 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // 23 -> 24 on 2026-10-07 (surface audit, item A): the SQL/TS rabies-matcher
 // parity test, __tests__/rabies-name-sql-parity.test.ts. No canon row covers
 // "one rabies matcher" yet.
-const UNMAPPED_COUNT = 24;
+//
+// 24 -> 26 on 2026-10-07 (pulido-documento): the two web/app parity fences,
+// __tests__/mobile-anotar-groups-parity.test.ts (Anotar picker categories)
+// and __tests__/mobile-libreta-trip-papers-parity.test.ts (trip-papers ticks
+// drawn as one row). No canon row states web/app presentation parity yet.
+const UNMAPPED_COUNT = 26;
 
 /**
  * Enforcement the filename glob below cannot see.
