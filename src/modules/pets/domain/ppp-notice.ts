@@ -48,12 +48,12 @@ export function pppRegistrationNotice(input: {
   switch (pppJurisdiction(input.province)) {
     case "AR-C":
       return {
-        title: `${input.petName}: inscribila en el registro de PPP de la Ciudad`,
+        title: `Inscribí a ${input.petName} en el registro de PPP de la Ciudad`,
         body: `${opening} En la Ciudad de Buenos Aires, la Ley 4078 requiere inscribirla en el Registro de Propietarios de Perros Potencialmente Peligrosos.${closing}`,
       };
     case "AR-B":
       return {
-        title: `${input.petName}: inscribila en el registro provincial de PPP`,
+        title: `Inscribí a ${input.petName} en el registro provincial de PPP`,
         body: `${opening} En la Provincia de Buenos Aires, la Ley 14.107 requiere inscribirla en el Registro Provincial, a través de la delegación de tu municipio.${closing}`,
       };
     case "AR-X":
