@@ -100,11 +100,13 @@ over Drizzle like every other write; the policies are the backstop.
 
 **Every change is audited, whatever the path.** A row trigger writes
 `org_found_animal_intake_changed` (payload: `org_id`, `before_values`,
-`after_values`, `public_contact_value_changed`) on INSERT and on any UPDATE that
-changes a governed column. The contact VALUE is never copied into `audit_log`:
-that table is append-only and cannot be redacted, and for a one-person org the
-published channel may be a person's phone. The row records that it changed and
-its kind; the value lives only in the settings table (a declared `KNOWN_GAP`). The
+`after_values`, `public_contact_value_changed`, `public_hours_changed`) on INSERT
+and on any UPDATE that changes a governed column. Neither free-text value — the
+published contact, the published hours — is copied into `audit_log`: that table
+is append-only and cannot be redacted, and an admin may type a person's phone
+into either. The row records that each changed (and the contact's kind); the
+values live only in the settings table (a declared `KNOWN_GAP`). The hours field
+also refuses a run of seven or more digits ("usá el contacto público"). The
 actor is `auth.uid()` (a PostgREST write) or the transaction-local
 `app.actor_user_id` the server action sets. Putting the audit in the database —
 not in the action — is what makes "every change" true for the RLS write path
@@ -127,8 +129,13 @@ One server-side read, `findNearbyHelp`, behind two doors:
    catalogue **locality id** the finder picked, never a coordinate. Per-IP
    rate limit, its own bucket (`found_help_lookup`).
 
-A server action is a POST: nothing about the place rides in a URL, so it never
-lands in an access log. A route handler with `?lat=&lng=` would have.
+A server action is a POST: the lookup's input — a coordinate on `/encontre`, a
+locality id on the new page — rides in a body, never a URL, so it never lands in
+an access log. A route handler with `?lat=&lng=` would have. One locality-level
+thing does reach a URL, by design: the page's link to `/perdidas` carries
+`?provincia=&localidad=`, the board's existing filter, so following it logs the
+picked locality's NAME (never a coordinate). Locality precision is accepted
+there; it is the same filter anyone types on `/perdidas`.
 
 **Coarsening.** Both ends are snapped to a 0.01° grid (~1 km) BEFORE the
 distance: the finder's point, and every organization's coordinates. Distances
@@ -183,7 +190,7 @@ No phone number is ever invented.
 |---|---|---|
 | D1 | **No device location.** The new page takes a locality the finder picks; `/encontre` reuses the point the finder already placed by hand. | W8 (PO 2026-09-24) bans reading the device location and the browser policy refuses it. Lifting W8 is a PO decision, not this change's. |
 | D2 | Coarsen to 0.01° on BOTH ends; coarse distance labels | the finder's place is theirs; a clinic's coordinates are withheld by 0283 and must not be recoverable by trilateration |
-| D3 | Server action (POST), no coordinates from the client on the new page | nothing about the place in a URL or an access log |
+| D3 | Server action (POST), no coordinates from the client on the new page | no coordinate in a URL or an access log; the only place-like thing in a URL is the locality name in the `/perdidas` filter link, accepted at that precision |
 | D4 | Audit in a DB trigger | the RLS write path must be audited too |
 | D5 | Receiver visibility independent of the directory opt-in, but the profile link only for listed orgs | the intake opt-in is its own consent to appear here; the profile is the directory's consent |
 | D6 | Published contact is a separate field, never the account email/phone | publishing a channel is the org's choice (0283's line: a business signed up for records, not to be advertised) |
@@ -223,5 +230,8 @@ reports and the fixtures may not exist there.
 4. **Who verifies the published contact?** Today the org admin types it and it
    is published as typed (audited). No verification of the channel.
 5. **The landing door** (D9) changed destination; confirm.
-6. **Capacity freshness** — "Recibimos" can go stale; a "actualizado hace N
-   días" line or an expiry could follow.
+6. **Capacity freshness** — built: a "Recibimos" not confirmed (the card not
+   saved) in 30 days is published as "Consultar antes", decided in SQL on the DB
+   clock, and the settings card reminds the admin to save. The stamp trigger
+   lets a writer move `updated_at` only into the past. Open: whether 30 days is
+   right, and whether to also notify the admin (today only the card says so).
