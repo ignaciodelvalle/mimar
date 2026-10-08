@@ -41,7 +41,6 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import type { MyPetsV1Item } from "@dim/contract/api";
 
 import { petStatusLabel } from "../credential/credential-view-model";
-import { LABEL_VALUE_FLEX } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
 import { speciesLabel } from "./species";
@@ -146,10 +145,9 @@ function PetRowImpl({
         </Text>
         {/* THE TOKEN IS NEVER CUT (QA v14 P2d). It is the credential's id —
             the thing a person dictates or compares — and at font scale 1.3
-            the one-line "Perro · DIM-CAWW-B…" cut exactly it. The
-            LABEL_VALUE_FLEX contract, applied to this line: the species is
-            the label (it may shrink and wrap), the token is the value (never
-            shrinks), and when both do not fit the row wraps and the token
+            the one-line "Perro · DIM-CAWW-B…" cut exactly it. The species
+            keeps its natural width (it may shrink and wrap), the token never
+            shrinks, and when both do not fit the row wraps and the token
             takes a line of its own. */}
         <View style={styles.petMetaRow}>
           <Text style={[styles.petMeta, styles.petSpecies]}>{species} ·</Text>
@@ -241,7 +239,12 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
   },
   petMetaRow: { flexDirection: "row", flexWrap: "wrap", columnGap: SPACE.xs },
-  petSpecies: { ...LABEL_VALUE_FLEX.label, flexGrow: 0 },
+  // NOT `LABEL_VALUE_FLEX.label`. That contract is `flex: 1`, which in React
+  // Native means flexBasis 0, and with the grow turned off the species measured
+  // ZERO wide: v14 drew "Perro ·" one glyph per line in an invisible column and
+  // every card grew several lines tall. Its natural width plus a shrink is all
+  // this line needs; the wrap moves the token down when both do not fit.
+  petSpecies: { flexShrink: 1 },
   petToken: { flexShrink: 0 },
   petMeta: {
     fontFamily: FONTS.mono,

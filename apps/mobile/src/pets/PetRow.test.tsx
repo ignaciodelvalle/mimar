@@ -67,6 +67,17 @@ describe("PetRow", () => {
     expect(screen.getByText("Hurón ·").props.numberOfLines).toBeUndefined();
   });
 
+  it("lets the species keep its natural width (v14 drew it zero wide)", () => {
+    // jest runs no layout engine, so this pins the cause instead of the pixels:
+    // `flex: 1` is flexBasis 0 in React Native, and with no grow the species
+    // measured zero wide and stretched every card several lines tall.
+    render(<PetRow pet={pet({ species: "dog" })} onPress={jest.fn()} />);
+    const species = screen.getByText("Perro ·");
+    expect(species).not.toHaveStyle({ flex: 1 });
+    expect(species).not.toHaveStyle({ flexBasis: 0 });
+    expect(species).toHaveStyle({ flexShrink: 1 });
+  });
+
   it("chips only lost and deceased — not the quiet active default", () => {
     const onPress = jest.fn<(token: string) => void>();
     const { rerender } = render(<PetRow pet={pet({ status: "active" })} onPress={onPress} />);
