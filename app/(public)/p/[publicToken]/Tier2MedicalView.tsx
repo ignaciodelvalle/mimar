@@ -24,6 +24,13 @@ interface Props {
     expired: number;
     dueSoon: number;
     missing: number;
+    /**
+     * The subset of `active` nobody professional signed. Counted as
+     * "declarada", never "vigente" — the credential front and the owner's
+     * libreta say the same of the same dose (QA v14 P2a). Optional: absent
+     * reads as 0.
+     */
+    declared?: number;
   };
   /**
    * True when the pet has at least one REGISTERED dose (hasAnyVaccineRecord,
@@ -73,18 +80,24 @@ export function Tier2MedicalView({
       })
     : null;
 
+  const declared = vaccineSummary.declared ?? 0;
+  const vigente = Math.max(0, vaccineSummary.active - declared);
+
   const vaccineTone: "ok" | "warn" | "danger" | "neutral" = !hasVaccineRecords
     ? "neutral"
     : vaccineSummary.expired > 0
       ? "danger"
       : vaccineSummary.dueSoon > 0 || vaccineSummary.missing > 0
         ? "warn"
-        : "ok";
+        : vigente > 0
+          ? "ok"
+          : "neutral";
 
   const vaccineValue = !hasVaccineRecords
     ? "—"
     : String(
-        vaccineSummary.active ||
+        vigente ||
+          declared ||
           vaccineSummary.expired ||
           vaccineSummary.dueSoon ||
           vaccineSummary.missing,
@@ -98,7 +111,12 @@ export function Tier2MedicalView({
         ? `${vaccineSummary.dueSoon} por vencer`
         : vaccineSummary.missing > 0
           ? `${vaccineSummary.missing} ${pluralizeEs(vaccineSummary.missing, "faltante")}`
-          : `${vaccineSummary.active} ${pluralizeEs(vaccineSummary.active, "vigente")}`;
+          : [
+              vigente > 0 ? `${vigente} ${pluralizeEs(vigente, "vigente")}` : null,
+              declared > 0 ? `${declared} ${pluralizeEs(declared, "declarada")}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || `0 ${pluralizeEs(0, "vigente")}`;
 
   return (
     <section aria-labelledby="tier2-h" className="pc-facts">

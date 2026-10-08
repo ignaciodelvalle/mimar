@@ -555,6 +555,46 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
     expect(decoded).toContain('"permanentConditions":["ciega"]');
   });
 
+  // QA v14 review: without the author columns every dose had no provenance and
+  // an owner-declared one counted as "vigente" in the level-2 summary. The read
+  // now carries them — for provenance only, never a person's identity.
+  it("the tier2 vaccine read carries provenance columns and never a person", async () => {
+    const selected: string[][] = [];
+    const planted = buildPlantedChain(BASE_PET);
+    mockDbSelect.mockImplementation((fields?: Record<string, unknown>) => {
+      selected.push(Object.keys(fields ?? {}));
+      return planted(fields);
+    });
+    const { CredentialTier2Medical } = await import(
+      "@/app/(public)/p/[publicToken]/CredentialStreamedSections"
+    );
+    await CredentialTier2Medical({
+      petId: "pet-strm-1",
+      sex: "female",
+      species: "dog" as never,
+      jurisdictionProvince: null,
+      jurisdictionLocality: null,
+      enabledUntil: null,
+      permanentConditions: [],
+      permanentConditionsOther: null,
+    });
+    expect(selected).toContainEqual([
+      "id",
+      "eventType",
+      "occurredAt",
+      "payload",
+      "authorRole",
+      "authorVerified",
+      "authorOrganizationId",
+    ]);
+    for (const keys of selected) expect(keys).not.toContain("recordedByUserId");
+    const { computeVaccinationSummary } = await import("@/lib/domain/libreta-health-status");
+    const rows = vi.mocked(computeVaccinationSummary).mock.calls.at(-1)?.[0];
+    expect(rows).toContainEqual(
+      expect.objectContaining({ authorRole: "owner", authorVerified: false }),
+    );
+  });
+
   // -------------------------------------------------------------------------
   // 4. Characterization — CredentialOriginOrg keeps the badge + a RAW <img>
   //    avatar (deliberately not next/image), and renders nothing when gated off.

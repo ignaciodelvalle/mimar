@@ -927,6 +927,12 @@ export async function fetchVaccinationSummariesForPets(
       eventType: petEvents.eventType,
       payload: petEvents.payload,
       occurredAt: petEvents.occurredAt,
+      // Provenance only (QA v14 P2a review): without the author columns every
+      // dose had no provenance and an owner-declared one counted as "Vigente"
+      // on the card, against the credential front's "Declarada".
+      authorRole: petEvents.authorRole,
+      authorVerified: petEvents.authorVerified,
+      authorOrganizationId: petEvents.authorOrganizationId,
     })
     .from(petEvents)
     .where(
@@ -941,11 +947,25 @@ export async function fetchVaccinationSummariesForPets(
   // compliance batch loader above.
   const eventsByPet = new Map<
     string,
-    Array<{ eventType: string; occurredAt: Date; payload: unknown }>
+    Array<{
+      eventType: string;
+      occurredAt: Date;
+      payload: unknown;
+      authorRole: string;
+      authorVerified: boolean;
+      authorOrganizationId: string | null;
+    }>
   >();
   for (const r of overlayAmendments(eventRows)) {
     const list = eventsByPet.get(r.petId) ?? [];
-    list.push({ eventType: r.eventType, occurredAt: r.occurredAt, payload: r.payload });
+    list.push({
+      eventType: r.eventType,
+      occurredAt: r.occurredAt,
+      payload: r.payload,
+      authorRole: r.authorRole,
+      authorVerified: r.authorVerified,
+      authorOrganizationId: r.authorOrganizationId,
+    });
     eventsByPet.set(r.petId, list);
   }
 

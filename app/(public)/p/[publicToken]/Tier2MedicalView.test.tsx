@@ -38,6 +38,39 @@ describe("<Tier2MedicalView> — active medications", () => {
   });
 });
 
+describe("<Tier2MedicalView> — a declared dose is not 'vigente' (QA v14 review)", () => {
+  const base = {
+    enabledUntil: null,
+    hasVaccineRecords: true,
+    isSterilized: false,
+    sex: "female",
+    activeMedications: [],
+    permanentConditions: [],
+    permanentConditionsOther: null,
+  };
+
+  it("an owner-declared current dose reads '1 declarada', never '1 vigente'", () => {
+    const { container } = render(
+      <Tier2MedicalView
+        {...base}
+        vaccineSummary={{ active: 1, expired: 0, dueSoon: 0, missing: 0, declared: 1 }}
+      />,
+    );
+    expect(container).toHaveTextContent("1 declarada");
+    expect(container).not.toHaveTextContent(/vigente/);
+  });
+
+  it("a signed and a declared dose say both", () => {
+    const { container } = render(
+      <Tier2MedicalView
+        {...base}
+        vaccineSummary={{ active: 2, expired: 0, dueSoon: 0, missing: 0, declared: 1 }}
+      />,
+    );
+    expect(container).toHaveTextContent("1 vigente · 1 declarada");
+  });
+});
+
 describe("<Tier2MedicalView> — the owner's consent is visible text", () => {
   const props = {
     vaccineSummary: { active: 1, expired: 0, dueSoon: 0, missing: 0 },

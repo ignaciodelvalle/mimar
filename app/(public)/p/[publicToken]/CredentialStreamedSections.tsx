@@ -122,6 +122,7 @@ export async function CredentialTier2Medical({
           expired: summary.expired,
           dueSoon: summary.dueSoon,
           missing: summary.missing,
+          declared: summary.declared,
         }}
         hasVaccineRecords={hasAnyVaccineRecord(summary)}
         isSterilized={sterilRows.length > 0}
@@ -144,12 +145,20 @@ function runTier2Queries(
   return Promise.all([
     // FULL vaccination history — same input the owner's libreta feeds into
     // computeVaccinationSummary. Type-narrowed, so it stays cheap at scale.
+    // The three AUTHOR columns are read for provenance only — a dose nobody
+    // professional signed reads "declarada", not "vigente", as on the owner's
+    // own surfaces (QA v14 P2a review). They never leave this server
+    // component: the view receives counts. No person's identity is read (no
+    // recordedByUserId, no name).
     db
       .select({
         id: petEvents.id,
         eventType: petEvents.eventType,
         occurredAt: petEvents.occurredAt,
         payload: petEvents.payload,
+        authorRole: petEvents.authorRole,
+        authorVerified: petEvents.authorVerified,
+        authorOrganizationId: petEvents.authorOrganizationId,
       })
       .from(petEvents)
       .where(and(eq(petEvents.petId, petId), eq(petEvents.eventType, "vaccination_administered"))),
