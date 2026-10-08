@@ -288,7 +288,13 @@ describe("the debt register is not empty, says so, and may not grow quietly", ()
   // erasure cannot redact the appointee FK or the platform admin's reasons in
   // place — the same shape as govt_assignments, itself a gap. Raised 17 -> 18
   // on purpose.
-  const KNOWN_GAP_CEILING = 18;
+  // 0292 added org_found_animal_intake (P4): the contact an organization chose
+  // to publish for receiving found animals. No column names a person, but for a
+  // one-person org that channel may be a natural person's phone or e-mail —
+  // the reason organizations itself is a gap, and erasing a PERSON cannot
+  // decide that an ORGANIZATION's published channel was theirs. Raised 18 -> 19
+  // on purpose.
+  const KNOWN_GAP_CEILING = 19;
 
   it("does not grow past the declared ceiling without someone raising it on purpose", () => {
     expect(
