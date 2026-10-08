@@ -175,19 +175,8 @@ export function validateFoundAnimalIntake(
       return { ok: false, error: "El sitio web debe empezar con https://." };
     }
   }
-  if (hours !== null && PHONE_LIKE_RUN.test(hours)) {
-    return {
-      ok: false,
-      error:
-        "Los horarios no pueden incluir un número de teléfono. Si querés publicar uno, usá el contacto público.",
-    };
-  }
-  if (hours !== null && hours.length > INTAKE_HOURS_MAX) {
-    return {
-      ok: false,
-      error: `Los horarios no pueden tener más de ${INTAKE_HOURS_MAX} caracteres.`,
-    };
-  }
+  const hoursError = intakeHoursError(hours);
+  if (hoursError !== null) return { ok: false, error: hoursError };
   return {
     ok: true,
     value: {
@@ -198,6 +187,18 @@ export function validateFoundAnimalIntake(
       publicHours: hours,
     },
   };
+}
+
+/** Why the free-text hours cannot be published as-is, or null when they can. */
+function intakeHoursError(hours: string | null): string | null {
+  if (hours === null) return null;
+  if (PHONE_LIKE_RUN.test(hours)) {
+    return "Los horarios no pueden incluir un número de teléfono. Si querés publicar uno, usá el contacto público.";
+  }
+  if (hours.length > INTAKE_HOURS_MAX) {
+    return `Los horarios no pueden tener más de ${INTAKE_HOURS_MAX} caracteres.`;
+  }
+  return null;
 }
 
 /**
