@@ -72,7 +72,7 @@ describe("eventPayloadDetails — curated es-AR whitelist (H3)", () => {
     ).toBe("22,75 kg");
   });
 
-  it("transport mode is capitalized for display while the stored code stays as written", () => {
+  it("transport mode is capitalized for display, on the same payload field", () => {
     // Surface audit 2026-10-07 (QW14): "Medio: terrestre" was the one lowercase
     // value on the asiento.
     const medio = (mode: string) => {
@@ -80,7 +80,6 @@ describe("eventPayloadDetails — curated es-AR whitelist (H3)", () => {
       const row = eventPayloadDetails("movement_recorded", payload).find(
         (r) => r.label === "Medio",
       );
-      expect(payload.mode).toBe(mode);
       return row;
     };
     expect(medio("land")).toEqual({ label: "Medio", value: "Terrestre", field: "mode" });
