@@ -43,17 +43,21 @@ import {
   Unavailable,
 } from "../ui/components";
 import { FONTS } from "../ui/fonts";
+import { LinkText } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
-import { libretaEventRoute } from "../ui/routes";
+import { ROUTES, libretaEventRoute } from "../ui/routes";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
 import {
   LEDGER_EMPTY_LABEL,
   LIBRETA_EMPTY_LABEL,
   LIBRETA_TRUNCATED_NOTE,
   type LibretaView,
+  REQUEST_VERIFICATION_LABEL,
   amendedLabel,
   buildLibretaView,
+  groupLedgerEntries,
   ledgerCountLabel,
+  offersVerificationRequest,
   otherVaccinesNote,
   upcomingDueLabel,
   upcomingRemainingLabel,
@@ -303,13 +307,22 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
           ) : (
             <View style={styles.entries}>
               <Text style={styles.ledgerCount}>{ledgerCountLabel(timeline.entries.length)}</Text>
-              {timeline.entries.map((entry) => (
-                <EntryCard
-                  key={entry.eventId}
-                  entry={entry}
-                  onOpen={() => router.push(libretaEventRoute(view.publicToken, entry.eventId))}
-                />
-              ))}
+              {/* DRAWN, not stored: consecutive "Lo tengo" ticks of one trip
+                  on one day are one row ("… · 3 cambios · Chile") that opens
+                  the newest of them. The count above stays the log's. */}
+              {groupLedgerEntries(timeline.entries).map((item) => {
+                const entry = item.kind === "entry" ? item.entry : item.entries[0];
+                if (entry === undefined) return null;
+                return (
+                  <EntryCard
+                    key={entry.eventId}
+                    entry={entry}
+                    title={item.kind === "papers" ? item.label : undefined}
+                    onOpen={() => router.push(libretaEventRoute(view.publicToken, entry.eventId))}
+                    onRequestVerification={() => router.push(ROUTES.buscarTurnos)}
+                  />
+                );
+              })}
               {/* A ledger that shows some of what exists must SAY so. */}
               {timeline.truncated ? <Body>{LIBRETA_TRUNCATED_NOTE}</Body> : null}
             </View>
@@ -392,9 +405,21 @@ function VaccineCounts({ vaccination }: { vaccination: LibretaVaccinationSection
   );
 }
 
-function EntryCard({ entry, onOpen }: { entry: LibretaEntryV1; onOpen: () => void }) {
+function EntryCard({
+  entry,
+  title = entry.title,
+  onOpen,
+  onRequestVerification,
+}: {
+  entry: LibretaEntryV1;
+  /** Overrides the asiento's own title — only a collapsed run of ticks does. */
+  title?: string;
+  onOpen: () => void;
+  /** Where "Pedir verificación" goes, for the asientos that offer it. */
+  onRequestVerification: () => void;
+}) {
   const showKind =
-    entry.kind.trim().toLocaleLowerCase("es") !== entry.title.trim().toLocaleLowerCase("es");
+    entry.kind.trim().toLocaleLowerCase("es") !== title.trim().toLocaleLowerCase("es");
   const facts = entry.facts.filter(
     (fact) =>
       !((fact.key === "Fecha" || fact.key === "Aplicada") && fact.value === entry.whenAbsolute),
@@ -403,13 +428,13 @@ function EntryCard({ entry, onOpen }: { entry: LibretaEntryV1; onOpen: () => voi
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={`${entry.title}, ${entry.whenAbsolute}. Ver detalle`}
+      accessibilityLabel={`${title}, ${entry.whenAbsolute}. Ver detalle`}
       style={styles.entry}
     >
       <View style={styles.entryHead}>
         <View style={styles.entryTitles}>
           {showKind ? <Text style={styles.entryKind}>{entry.kind}</Text> : null}
-          <Text style={styles.entryTitle}>{entry.title}</Text>
+          <Text style={styles.entryTitle}>{title}</Text>
         </View>
         <Text style={styles.entryWhen}>
           {entry.whenRelative}
@@ -426,6 +451,18 @@ function EntryCard({ entry, onOpen }: { entry: LibretaEntryV1; onOpen: () => voi
 
       <Text style={styles.provenance}>{entry.provenance.label}</Text>
       {entry.warning ? <Text style={styles.warning}>{entry.warning}</Text> : null}
+      {/* THE WEB'S "Pedir verificación →" (AsientoCard): an unverified rabies
+          dose links to finding a turno, where a professional can sign it.
+          `/turnos/buscar` takes no service parameter yet, so it opens on the
+          service picker rather than preselecting the antirrábica. */}
+      {offersVerificationRequest(entry) ? (
+        <LinkText
+          onPress={onRequestVerification}
+          accessibilityHint="Abre la búsqueda de turnos para que un profesional la verifique"
+        >
+          {REQUEST_VERIFICATION_LABEL}
+        </LinkText>
+      ) : null}
       {/* The values above are ALREADY corrected; this says a correction
           happened, which is the half a corrected value cannot say alone. */}
       {entry.amendedAt ? <Text style={styles.amended}>{amendedLabel(entry.amendedAt)}</Text> : null}

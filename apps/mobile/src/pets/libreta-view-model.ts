@@ -19,6 +19,7 @@
 // What IS decided here is the copy this screen puts AROUND those facts.
 
 import type {
+  LibretaEntryV1,
   LibretaIdentitySection,
   LibretaTimelineSection,
   LibretaUpcomingItemV1,
@@ -248,6 +249,118 @@ export function upcomingDueLabel(dueAtIso: string, now: Date): string {
 /** "Asientos · N registros", pluralised. */
 export function ledgerCountLabel(count: number): string {
   return count === 1 ? "1 registro" : `${count} registros`;
+}
+
+// ---------------------------------------------------------------------------
+// "Pedir verificación"
+// ---------------------------------------------------------------------------
+
+/** The link under an unverified rabies dose — the web's AsientoCard words. */
+export const REQUEST_VERIFICATION_LABEL = "Pedir verificación";
+
+/**
+ * Whether an asiento offers "Pedir verificación".
+ *
+ * THE WEB'S RULE, read off what the wire carries: `toAsientoView` sets its
+ * `verifyHref` for a vaccination that is NOT professionally verified AND is the
+ * rabies dose — the one the law asks for, which is why its eyebrow reads
+ * "Vacuna · obligatoria". Any other self-declared vaccine still says "Falta
+ * verificación profesional", and offers no link on either platform.
+ */
+export function offersVerificationRequest(
+  entry: Pick<LibretaEntryV1, "eventType" | "kind" | "provenance">,
+): boolean {
+  return (
+    entry.eventType === "vaccination_administered" &&
+    entry.kind === "Vacuna · obligatoria" &&
+    !entry.provenance.verified
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Trip papers ticks — drawn as one row
+// ---------------------------------------------------------------------------
+
+/**
+ * What a papers tick is titled — the web's `TRIP_PAPERS_UPDATED_LABEL`
+ * (`components/pet-profile/asiento-fields.ts`), which this bundle cannot import.
+ * A root parity test holds the two together.
+ */
+export const TRIP_PAPERS_UPDATED_LABEL = "Papeles del viaje actualizados";
+
+/** One line of the ledger: an asiento, or a run of papers ticks drawn as one. */
+export type LedgerItem =
+  | { kind: "entry"; entry: LibretaEntryV1 }
+  | { kind: "papers"; entries: LibretaEntryV1[]; label: string };
+
+function factValue(entry: LibretaEntryV1, key: string): string | null {
+  return entry.facts.find((fact) => fact.key === key)?.value ?? null;
+}
+
+/**
+ * The grouping key of a papers tick, or null for every other asiento.
+ *
+ * NO TRIP ID CROSSES THE WIRE (the asiento carries whitelisted facts, never
+ * ids), so the trip is told apart by what the server says about it — its
+ * destination and departure day — and the day by `whenAbsolute`, which is
+ * already the Argentine calendar day. The web keys on the trip's event id; the
+ * two only differ for two trips to one country on one day, ticked in one run.
+ */
+export function tripPapersTickKey(entry: LibretaEntryV1): string | null {
+  if (entry.eventType !== "event_amended" || entry.title !== TRIP_PAPERS_UPDATED_LABEL) {
+    return null;
+  }
+  return [
+    factValue(entry, "Destino") ?? "",
+    factValue(entry, "Fecha del viaje") ?? "",
+    entry.whenAbsolute,
+  ].join("|");
+}
+
+/** "Papeles del viaje actualizados · 3 cambios · Chile" — the web's words. */
+export function tripPapersGroupLabel(count: number, country: string | null): string {
+  return [TRIP_PAPERS_UPDATED_LABEL, count === 1 ? "1 cambio" : `${count} cambios`, country]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * The ledger as it is DRAWN: consecutive ticks of one trip on one day become
+ * one row. PRESENTATION ONLY — every tick is still its own asiento on the
+ * server, the count says how many, and the row opens the newest of them.
+ */
+export function groupLedgerEntries(entries: readonly LibretaEntryV1[]): LedgerItem[] {
+  const items: LedgerItem[] = [];
+  let run: LibretaEntryV1[] = [];
+  let runKey: string | null = null;
+  const flush = () => {
+    const head = run[0];
+    if (head !== undefined && run.length === 1) items.push({ kind: "entry", entry: head });
+    else if (head !== undefined) {
+      items.push({
+        kind: "papers",
+        entries: run,
+        label: tripPapersGroupLabel(run.length, factValue(head, "Destino")),
+      });
+    }
+    run = [];
+    runKey = null;
+  };
+  for (const entry of entries) {
+    const key = tripPapersTickKey(entry);
+    if (key !== null && key === runKey) {
+      run.push(entry);
+      continue;
+    }
+    flush();
+    if (key === null) items.push({ kind: "entry", entry });
+    else {
+      run = [entry];
+      runKey = key;
+    }
+  }
+  flush();
+  return items;
 }
 
 /** No asientos, but the read succeeded. A fact about the animal. */
