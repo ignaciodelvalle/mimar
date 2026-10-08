@@ -25,6 +25,7 @@ jest.mock("@react-native-community/netinfo", () => ({
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
 import { CasesScreen } from "./CasesScreen";
+import { caseDateLabel } from "./cases-view-model";
 
 // The thumbs and severity tiles are hidden from the accessibility tree on
 // purpose (the row label already says it all), so they are found only with
@@ -210,5 +211,39 @@ describe("CasesScreen", () => {
     expect(screen.getByText("Te toca a vos")).toBeTruthy();
     expect(screen.queryByText("En curso")).toBeNull();
     expect(screen.queryByTestId("pet-thumb", HIDDEN)).toBeNull();
+  });
+
+  it("puts the date on the pet's line, not in a column of its own", async () => {
+    // A right-hand date column took its width from the text and, at font scale
+    // 1.3, squeezed the title into six lines. It now shares the meta line.
+    mockFetch.mockResolvedValue(
+      ok({
+        open: [
+          aRow({
+            title: "Tu postulación para Luna",
+            petId: "DIM-LUNA-0003",
+            petName: "Luna",
+          }),
+        ],
+      }),
+    );
+    render(<CasesScreen onOpenRoute={jest.fn()} />);
+    await screen.findByText("Tu postulación para Luna");
+    const date = screen.getByText(caseDateLabel("2026-09-01T12:00:00.000Z"));
+    // The nearest host View above each text: the one meta line, for both.
+    const lineOf = (node: typeof date) => {
+      let at = node.parent;
+      while (at !== null && at.type !== "View") at = at.parent;
+      return at;
+    };
+    expect(lineOf(date)).not.toBeNull();
+    expect(lineOf(date)).toBe(lineOf(screen.getByText("Luna")));
+  });
+
+  it("does not repeat 'Mis casos' in the body — the header says it", async () => {
+    mockFetch.mockResolvedValue(ok());
+    render(<CasesScreen onOpenRoute={jest.fn()} />);
+    await screen.findByText("Sin casos abiertos");
+    expect(screen.queryByText("Mis casos")).toBeNull();
   });
 });

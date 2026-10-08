@@ -12,6 +12,12 @@
 // informational glyph. The pet the row is about rides under the text — its
 // photo and name — unless the row sits inside that pet's cluster, whose head
 // already names it.
+//
+// THE DATE RIDES ON THAT SAME LINE, after the pet (pulido-kit-listas,
+// 2026-10-07). It used to be a third column at the row's right edge, and a
+// column that never shrinks takes its width from the text: at font scale 1.3
+// the title and subtitle were left a sliver and the row ran to six lines. On
+// the meta line it costs one word, and the line wraps instead of the body.
 
 import type { MyCaseRowV1 } from "@dim/contract/api";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -43,16 +49,21 @@ export function CaseRow({
         <Text style={styles.title}>{row.title}</Text>
         {row.subtitle === "" ? null : <Text style={styles.meta}>{row.subtitle}</Text>}
         {due === null ? null : <Text style={styles.due}>{due}</Text>}
-        {showPet && row.petName !== null ? (
-          <View style={styles.pet}>
-            <PetThumb uri={row.petPhotoUrl} size={20} />
-            <Text style={styles.meta} numberOfLines={1}>
-              {row.petName}
-            </Text>
-          </View>
-        ) : null}
+        <View style={styles.metaLine}>
+          {showPet && row.petName !== null ? (
+            <>
+              <PetThumb uri={row.petPhotoUrl} size={20} />
+              <Text style={[styles.meta, styles.petName]} numberOfLines={1}>
+                {row.petName}
+              </Text>
+              <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.meta}>
+                ·
+              </Text>
+            </>
+          ) : null}
+          <Text style={styles.meta}>{caseDateLabel(row.since)}</Text>
+        </View>
       </View>
-      <Text style={styles.date}>{caseDateLabel(row.since)}</Text>
     </>
   );
 
@@ -140,10 +151,7 @@ const styles = StyleSheet.create({
     lineHeight: TYPE.sm * LEADING.md,
     color: COLORS.warnInk,
   },
-  pet: { flexDirection: "row", alignItems: "center", gap: SPACE.xs },
-  date: {
-    fontFamily: FONTS.sans,
-    fontSize: TYPE.sm,
-    color: COLORS.inkMuted,
-  },
+  metaLine: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.xs },
+  // The name yields before the date does: a long name truncates, the date stays.
+  petName: { flexShrink: 1 },
 });
