@@ -1,8 +1,10 @@
 // Fixtures for the P4 found-animal tests (migration 0292).
 //
-// Every row is keyed by a per-run random suffix and fresh UUIDs, so two runs —
-// or a run and a crashed run's residue — never collide, and teardown deletes
-// exactly what this run wrote. Profiles are inserted directly (public.profiles
+// Every row is keyed by a per-file prefix, a per-run random suffix and fresh
+// UUIDs, so keys never collide and teardown deletes exactly what this run
+// wrote. Keys are not lists, though: a crashed run's orgs at the same place
+// WOULD enter a later run's results, so a file that asserts a whole list calls
+// sweepLeftovers(prefix) first. Profiles are inserted directly (public.profiles
 // carries no FK to auth.users; the RLS probes run as `authenticated` with
 // spoofed claims). Intake rows are written through the production writer,
 // because the table's audit trigger refuses a write with no actor.
@@ -13,7 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { inArray } from "drizzle-orm";
+import { inArray, like } from "drizzle-orm";
 
 import { db, organizationMemberships, organizations, profiles } from "@/db";
 import {
@@ -25,13 +27,16 @@ import { upsertFoundAnimalIntake } from "@/src/modules/organizations/infrastruct
 type OrgType = (typeof organizations.orgType.enumValues)[number];
 
 export type FoundAnimalFixtures = {
+  /** Token prefix, one per test FILE, so a file may sweep its own leftovers. */
+  prefix: string;
   suffix: string;
   profileIds: string[];
   orgIds: string[];
 };
 
-export function newFoundAnimalFixtures(): FoundAnimalFixtures {
+export function newFoundAnimalFixtures(prefix: string): FoundAnimalFixtures {
   return {
+    prefix,
     suffix: Math.random().toString(36).slice(2, 8).toUpperCase(),
     profileIds: [],
     orgIds: [],
@@ -61,7 +66,7 @@ export async function makeOrg(fx: FoundAnimalFixtures, spec: OrgSpec): Promise<s
   const [row] = await db
     .insert(organizations)
     .values({
-      publicToken: `P4-${fx.suffix}-${spec.label}`,
+      publicToken: `${fx.prefix}-${fx.suffix}-${spec.label}`,
       legalName: `Razon Social Privada ${spec.label} ${fx.suffix}`,
       displayName: `Receptora ${spec.label} ${fx.suffix}`,
       orgType: spec.orgType ?? "shelter",
@@ -120,4 +125,23 @@ export async function teardownFoundAnimalFixtures(fx: FoundAnimalFixtures): Prom
       .where(inArray(organizationMemberships.userId, fx.profileIds));
     await db.delete(profiles).where(inArray(profiles.id, fx.profileIds));
   }
+}
+
+/**
+ * Deletes what a CRASHED earlier run of the same file left behind (its
+ * afterAll never ran). Only this file's prefix: another file's fixtures may be
+ * live in a parallel worker. Without it, leftovers at the same coordinates and
+ * province would enter this run's lists and every later run would fail.
+ */
+export async function sweepLeftovers(prefix: string): Promise<void> {
+  const leftovers = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(like(organizations.publicToken, `${prefix}-%`));
+  if (leftovers.length === 0) return;
+  const ids = leftovers.map((r) => r.id);
+  await db
+    .delete(organizationMemberships)
+    .where(inArray(organizationMemberships.organizationId, ids));
+  await db.delete(organizations).where(inArray(organizations.id, ids));
 }
