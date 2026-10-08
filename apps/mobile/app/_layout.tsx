@@ -468,9 +468,10 @@ function RootLayout() {
             over a screen whose own title is capitalised.
 
             The wording was NOT invented here, which is why an integrator could
-            close it at all: "Reclamar una mascota" is already the string the
-            screen's own <Title> uses in its entry state AND the web's <h1> on
-            `/mis-mascotas/reclamar`. Naming the act rather than the step matters
+            close it at all: "Reclamar una mascota" was the string the screen's
+            own <Title> used in its entry state AND is the web's <h1> on
+            `/mis-mascotas/reclamar`. (The body <Title> repeated this header
+            and was removed, QA v14 P3.) Naming the act rather than the step matters
             more here than on most of these, because this screen's title changes
             under it three times — the lookup question, then the animal's name —
             and a header that tracked it would rename the page mid-flow. */}
@@ -539,8 +540,9 @@ function RootLayout() {
               el 31/08 — la condición que WU-S dejó escrita quedó cumplida.
             · "Recuperar contraseña": el <Title> de RecuperarScreen y el <h1> de
               la web en /recuperar.
-            · "Compartir": el <Title> de SharesScreen en sus dos estados y la
-              FaceAction de /mascotas que la abre.
+            · "Compartir": la FaceAction de /mascotas que la abre (el <Title>
+              de SharesScreen lo repetía y se quitó, QA v14 P3: ahora nombra a
+              la mascota).
             · "Cuidador temporal": el <Title> de CaretakerPetScreen (dos
               estados), la FaceAction, y el <h1> de la web ("Cuidador temporal
               de {nombre}" — acá sin el nombre, por la razón que fijó Mudanza:

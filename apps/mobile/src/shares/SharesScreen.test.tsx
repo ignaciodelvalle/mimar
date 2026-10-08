@@ -97,6 +97,15 @@ beforeEach(() => {
   mockShare.mockResolvedValue({ action: "sharedAction" });
 });
 
+describe("the body does not repeat the header (QA v14 P3)", () => {
+  it("names the animal under the 'Compartir' header instead of a second 'Compartir'", async () => {
+    mockFetch.mockResolvedValue(ok(payload()));
+    render(<SharesScreen publicToken={TOKEN} />);
+    await waitFor(() => expect(screen.getByText("Veterinaria Norte")).toBeTruthy());
+    expect(screen.queryByText("Compartir")).toBeNull();
+  });
+});
+
 describe("token hygiene", () => {
   it("NEVER renders the share token as text", async () => {
     mockFetch.mockResolvedValue(ok(payload()));

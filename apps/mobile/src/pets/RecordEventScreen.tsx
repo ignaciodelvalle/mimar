@@ -345,8 +345,9 @@ function KindPicker({
           for it. */}
       <View style={styles.header}>
         <Eyebrow>Libreta sanitaria</Eyebrow>
-        <Title>Anotar</Title>
-        <Body>¿Qué querés registrar?</Body>
+        {/* The header says "Anotar"; the body asks the question instead of
+            repeating it (QA v14 P3, header + H1 identical). */}
+        <Title>¿Qué querés registrar?</Title>
       </View>
       {/* ARRIBA DE LAS FILAS Y SIN REEMPLAZARLAS. Ver la cabecera de
           `QuickCaptureBox`: es el camino rápido, y un camino rápido abajo de

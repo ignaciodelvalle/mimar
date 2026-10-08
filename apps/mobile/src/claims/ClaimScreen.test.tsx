@@ -120,6 +120,12 @@ afterEach(() => {
 });
 
 describe("the ask", () => {
+  it("does not repeat the 'Reclamar una mascota' header in the body (QA v14 P3)", () => {
+    render(<ClaimScreen onOpenPet={jest.fn()} />);
+    expect(screen.queryByText("Reclamar una mascota")).toBeNull();
+    expect(screen.getByText("Todavía no se puede escanear")).toBeTruthy();
+  });
+
   it("says out loud that the camera is not here, instead of hiding a missing button", () => {
     // Somebody standing in front of a stray is the person this screen is for.
     // Telling them the number goes in by hand beats letting them hunt for a scan

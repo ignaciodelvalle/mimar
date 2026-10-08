@@ -256,7 +256,8 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
   if (state.phase === "failed") {
     return (
       <Screen>
-        <Title>Compartir</Title>
+        {/* No body "Compartir": the header already says it (QA v14 P3,
+            header + H1 identical). */}
         <Callout tone="err">
           <Body>{state.message}</Body>
         </Callout>
@@ -275,8 +276,9 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
     // bottom of a long scroll — without it the keyboard covers the field a
     // person is typing into.
     <Screen keyboardAvoiding refreshControl={refresher}>
-      <Title>Compartir</Title>
-      <Body>{view.petName}</Body>
+      {/* The header says "Compartir"; the body names WHOSE (QA v14 P3: the
+          same word twice, header and H1). */}
+      <Title>{view.petName}</Title>
 
       <ListRow
         label="Enviar la credencial pública"

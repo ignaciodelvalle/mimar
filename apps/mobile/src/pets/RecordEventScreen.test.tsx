@@ -300,6 +300,12 @@ describe("RecordEventScreen — the picker's conditional rows", () => {
     };
   }
 
+  it("asks the question under the 'Anotar' header instead of repeating it (QA v14 P3)", () => {
+    render(<RecordEventScreen publicToken={TOKEN} />);
+    expect(screen.queryByText("Anotar")).toBeNull();
+    expect(screen.getByText("¿Qué querés registrar?")).toBeOnTheScreen();
+  });
+
   it("draws NO pregnancy row until the read lands", () => {
     // The default mock never resolves. Ten fixed rows and nothing else — a row
     // that appears late is fine, a row that vanishes under a thumb is not.

@@ -285,7 +285,8 @@ export function ClaimScreen({ onOpenPet }: { onOpenPet: (publicToken: string) =>
 
   return (
     <Screen>
-      <Title>Reclamar una mascota</Title>
+      {/* No body "Reclamar una mascota": the header already says it (QA v14
+          P3, header + H1 identical). */}
       <Subtitle>
         Si tu mascota ya está registrada por su microchip o su tatuaje, podés vincularla a tu
         cuenta.
