@@ -72,6 +72,22 @@ describe("eventPayloadDetails — curated es-AR whitelist (H3)", () => {
     ).toBe("22,75 kg");
   });
 
+  it("transport mode is capitalized for display while the stored code stays as written", () => {
+    // Surface audit 2026-10-07 (QW14): "Medio: terrestre" was the one lowercase
+    // value on the asiento.
+    const medio = (mode: string) => {
+      const payload = { sub_kind: "transport_recorded", mode };
+      const row = eventPayloadDetails("movement_recorded", payload).find(
+        (r) => r.label === "Medio",
+      );
+      expect(payload.mode).toBe(mode);
+      return row;
+    };
+    expect(medio("land")).toEqual({ label: "Medio", value: "Terrestre", field: "mode" });
+    expect(medio("air")?.value).toBe("Aéreo");
+    expect(medio("sea")?.value).toBe("Marítimo");
+  });
+
   it("unknown event type → []", () => {
     expect(eventPayloadDetails("pet_registered", { foo: "bar" })).toEqual([]);
     expect(eventPayloadDetails("credential_scanned", {})).toEqual([]);

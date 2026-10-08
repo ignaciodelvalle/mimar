@@ -196,8 +196,11 @@ export function eventPayloadDetails(
       } else if (subKind === "transport_recorded") {
         push("Corredor", "corridor_id", corridorDisplayLabel);
         pushDate("Fecha de viaje", "travel_date");
+        // Capitalized like every other value on the asiento (surface audit
+        // 2026-10-07, QW14: "Medio: terrestre" was the one lowercase value).
+        // Display only — the stored code stays "air" / "land" / "sea".
         push("Medio", "mode", (v) =>
-          v === "air" ? "aéreo" : v === "land" ? "terrestre" : v === "sea" ? "marítimo" : v,
+          v === "air" ? "Aéreo" : v === "land" ? "Terrestre" : v === "sea" ? "Marítimo" : v,
         );
         push("Motivo", "purpose");
       }
