@@ -12,6 +12,8 @@
 // owner-only Emergencia block (wave-3 P3, PO decision #645 point 3 — moved
 // off CredentialFace), and the keepsake ExportLibretaButton in its footer.
 
+import Link from "next/link";
+
 import { Icon } from "@/components/Icon";
 import { AsientoCard } from "@/components/pet-profile/AsientoCard";
 import { ExportLibretaButton } from "@/components/pet-profile/ExportLibretaButton";
@@ -32,6 +34,7 @@ import {
   tripPapersContext,
   tripPapersGroupLabel,
   tripPapersTickKey,
+  tripPapersTickLabel,
 } from "./asiento-fields";
 import { pastEventMatchesAudience } from "./libreta-lens";
 import { groupPastByVisit } from "./libreta-visit-groups";
@@ -183,7 +186,7 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
                     trip on one day draw as ONE row (presentation only — each
                     tick is still its own event). See asiento-fields.ts. */}
                 {collapseTripPaperTicks(groupPastByVisit(visiblePast, data.visits), (entry) =>
-                  entry.kind === "event" ? tripPapersTickKey(entry.row) : null,
+                  entry.kind === "event" ? tripPapersTickKey(entry.row, trips) : null,
                 ).map((collapsed) => {
                   if (collapsed.kind === "papers") {
                     const head = collapsed.entries[0];
@@ -191,9 +194,33 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
                     const target = (head.row.payload as { target_event_id?: string } | null)
                       ?.target_event_id;
                     const country = target ? (trips.get(target)?.country ?? null) : null;
-                    return renderAsiento(
-                      head.row,
-                      tripPapersGroupLabel(collapsed.entries.length, country),
+                    const ticks = collapsed.entries.flatMap((e) =>
+                      e.kind === "event" ? [e.row] : [],
+                    );
+                    // Drawn as one row, but EVERY tick keeps its door: the
+                    // disclosure lists each one's own detail page.
+                    return (
+                      <div key={`papers-${head.row.id}`} data-section="libreta-papeles">
+                        {renderAsiento(head.row, tripPapersGroupLabel(ticks.length, country))}
+                        <details className="px-1 pb-2 text-sm">
+                          <summary className="cursor-pointer font-semibold text-[var(--color-ln-azul)]">
+                            Ver cada cambio
+                          </summary>
+                          <ul className="mt-1 space-y-1">
+                            {ticks.map((row, i) => (
+                              <li key={row.id}>
+                                <Link
+                                  href={`/mis-mascotas/${petPublicToken}/eventos/${row.id}`}
+                                  prefetch={false}
+                                  className="text-[var(--color-ln-azul)] no-underline hover:underline"
+                                >
+                                  {tripPapersTickLabel(i, ticks.length)} →
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      </div>
                     );
                   }
                   const entry = collapsed.entry;

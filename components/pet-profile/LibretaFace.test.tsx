@@ -332,10 +332,14 @@ describe("LibretaFace — trip papers ticks collapse into one row (presentation 
       />,
     );
     expect(html).toContain("Papeles del viaje actualizados · 3 cambios · Chile");
-    // One card, linked to the newest tick; the older two are not drawn.
-    expect(html).toContain("/eventos/tick-3");
-    expect(html).not.toContain("/eventos/tick-2");
-    expect(html).not.toContain("/eventos/tick-1");
+    // ONE card (one title)…
+    expect(html.match(/Papeles del viaje actualizados/g)).toHaveLength(1);
+    // …and every tick keeps its own detail page, listed in order inside it.
+    for (const id of ["tick-3", "tick-2", "tick-1"]) {
+      expect(html).toContain(`/mis-mascotas/abc/eventos/${id}`);
+    }
+    expect(html).toContain("Ver cada cambio");
+    expect(html.indexOf("Cambio 3 de 3")).toBeLessThan(html.indexOf("Cambio 1 de 3"));
     // The trip itself still renders on its own.
     expect(html).toContain("/eventos/trip-1");
   });
@@ -349,6 +353,21 @@ describe("LibretaFace — trip papers ticks collapse into one row (presentation 
             tick("tick-1", "2026-07-01T16:00:00Z"),
             trip,
           ],
+        })}
+        petPublicToken="abc"
+        isOwner
+      />,
+    );
+    expect(html).not.toContain("cambios");
+    expect(html).toContain("/eventos/tick-2");
+    expect(html).toContain("/eventos/tick-1");
+  });
+
+  it("does not merge ticks whose trip fell out of the read", () => {
+    const html = renderToStaticMarkup(
+      <LibretaFace
+        data={faceData({
+          past: [tick("tick-2", "2026-07-01T18:00:00Z"), tick("tick-1", "2026-07-01T16:00:00Z")],
         })}
         petPublicToken="abc"
         isOwner
