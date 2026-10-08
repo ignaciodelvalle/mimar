@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-07",
-  "sha": "1d8a9a787",
+  "sha": "4d0e44f9e",
   "facts": {
     "event_types": {
       "value": 56,
@@ -33,7 +33,7 @@
       "method": "files named exactly `page.tsx` anywhere under `app/`."
     },
     "route_handlers": {
-      "value": 106,
+      "value": 105,
       "source": "app/**/route.ts",
       "method": "files named exactly `route.ts` anywhere under `app/`."
     },
@@ -98,7 +98,7 @@
       "method": "files ending in `.spec.ts` under `e2e/`. Playwright's own `testIgnore` drops `demo/**` and `perf/**` at run time, so fewer than this actually run in the default project."
     },
     "mobile_jest_files": {
-      "value": 157,
+      "value": 156,
       "source": "apps/mobile/src/**/*.test.ts(x)",
       "method": "files matching /\\.test\\.tsx?$/ under `apps/mobile/src/`. A separate runner (jest-expo) from the Vitest corpus — `db-reachability.ts` skips `apps/` for exactly that reason."
     },
