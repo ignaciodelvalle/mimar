@@ -792,6 +792,22 @@ describe("PetProfileEditScreen — the breed picker does not dump the catalog (B
     expect(screen.getByText("Akita Inu")).toBeOnTheScreen();
   });
 
+  it.each([
+    ["dalmata", "Dálmata"],
+    ["frances", "Bulldog Francés"],
+    ["GRAN danes", "Gran Danés"],
+  ])("folds accents and case: typing %s finds %s (audit 2026-10-07)", async (typed, breed) => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ identity: { name: "Pampa", breed: "Beagle", color: null } }),
+    });
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+
+    fireEvent.changeText(screen.getByLabelText("Raza"), typed);
+    expect(screen.getByText(breed)).toBeOnTheScreen();
+  });
+
   it("names itself after its visible label, not 'Buscar raza' (WCAG 2.5.3)", async () => {
     // The same defect lote 1a fixed on LocationPicker: a voice user reading
     // "Raza" off the screen and saying it named nothing at all.

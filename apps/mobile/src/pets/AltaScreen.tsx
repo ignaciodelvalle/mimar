@@ -39,7 +39,7 @@
 // purpose rather than kept.
 
 import { PET_COLOR_MAX, PET_NAME_MAX } from "@dim/contract/input";
-import { LOCALITY_FIELD_LABEL, breedsForSpecies } from "@dim/contract/reference";
+import { LOCALITY_FIELD_LABEL, breedsForSpecies, matchesSearch } from "@dim/contract/reference";
 import { useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
@@ -650,9 +650,9 @@ function BreedPicker({
   const [query, setQuery] = useState("");
   const options = useMemo(() => breedsForSpecies(draft.species), [draft.species]);
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const matches =
-      needle.length === 0 ? options : options.filter((b) => b.toLowerCase().includes(needle));
+    // Accents and case folded, like the web's breed search: "dalmata" finds
+    // "Dálmata" (`matchesSearch`, @dim/contract/reference).
+    const matches = options.filter((b) => matchesSearch(b, query));
     // Capped, not scrolled forever: 12 rows is a decision, 180 is a list the
     // user has to read.
     return matches.slice(0, 12);
