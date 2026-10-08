@@ -655,8 +655,10 @@ export function commandDoneLabel(command: LostCommandInput["command"], petSex: s
       return "Listo. La credencial pública ya muestra el aviso de búsqueda.";
     case "report_last_seen":
       return "Avistaje registrado.";
-    case "mark_found":
-      return `Listo. La marcamos como ${foundAdjective(petSex)} y avisamos a quienes la estaban buscando.`;
+    case "mark_found": {
+      const pronoun = objectPronoun(petSex);
+      return `Listo. ${pronoun.charAt(0).toUpperCase()}${pronoun.slice(1)} marcamos como ${foundAdjective(petSex)} y avisamos a quienes ${pronoun} estaban buscando.`;
+    }
     case "reactivate_search":
       return "Búsqueda reactivada.";
     case "set_disclosure":

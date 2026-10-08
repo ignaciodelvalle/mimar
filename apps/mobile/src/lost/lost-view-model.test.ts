@@ -412,6 +412,13 @@ describe("the copy every branch owes", () => {
     expect(commandDoneLabel("mark_found", "male")).toContain("encontrado");
     expect(commandDoneLabel("mark_found", "female")).toContain("encontrada");
     expect(commandDoneLabel("mark_found", null)).toContain("encontrada/o");
+    // …and the pronouns with it (QA v14 review).
+    expect(commandDoneLabel("mark_found", "male")).toBe(
+      "Listo. Lo marcamos como encontrado y avisamos a quienes lo estaban buscando.",
+    );
+    expect(commandDoneLabel("mark_found", "female")).toBe(
+      "Listo. La marcamos como encontrada y avisamos a quienes la estaban buscando.",
+    );
   });
 
   it("says the no-op the same way, gendered, for a mark_found replay", () => {

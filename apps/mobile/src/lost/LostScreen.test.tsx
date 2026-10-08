@@ -479,10 +479,7 @@ describe("LostScreen — marcar perdida", () => {
     render(<LostScreen publicToken={TOKEN} />);
     fireEvent.press(await screen.findByText("Marcar como perdida"));
 
-    fireEvent.changeText(
-      screen.getByLabelText("Dónde se vio por última vez"),
-      "Plaza San Martín",
-    );
+    fireEvent.changeText(screen.getByLabelText("Dónde se vio por última vez"), "Plaza San Martín");
     // Publishing a phone is a decision somebody makes on this screen.
     fireEvent.press(screen.getByText("Mostrar mi teléfono"));
     fireEvent.press(screen.getByText("Marcar como perdida"));
@@ -530,10 +527,7 @@ describe("LostScreen — marcar perdida", () => {
     // Nothing typed yet: opening the form may not interrupt anybody.
     expect(mockNav.pressBack().blocked).toBe(false);
 
-    fireEvent.changeText(
-      screen.getByLabelText("Dónde se vio por última vez"),
-      "Plaza San Martín",
-    );
+    fireEvent.changeText(screen.getByLabelText("Dónde se vio por última vez"), "Plaza San Martín");
     expect(mockNav.pressBack().blocked).toBe(true);
     expect(alert.mock.calls[0]?.[0]).toBe("¿Salir sin guardar?");
     alert.mockRestore();
