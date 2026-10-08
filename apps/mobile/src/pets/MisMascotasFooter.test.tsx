@@ -7,8 +7,9 @@
 // header's ☰ menu now (or the bell, for Notificaciones). This friction was
 // intended; the file is rewritten around what replaced the footer:
 //
-//   1. THE HOME ENDS AT "Registrar otra mascota" — in the loaded state, and no
-//      destination button follows in ANY of the three states.
+//   1. THE REGISTER ACTION IS "+ Agregar" ON THE "Tus mascotas · N" ROW (PO
+//      2026-10-07) — one door, in the header of the list, loaded state only;
+//      no destination button follows the list in ANY of the three states.
 //   2. ONE DOOR PER FEATURE. No menu destination is also a home button. The only
 //      routes the home body may reach that the menu also reaches are the
 //      DOCUMENTED CONTEXTUAL SHORTCUTS below, each one drawn only when there is
@@ -74,6 +75,8 @@ import { HOME_MENU_NOTICE_DISMISSED_KEY, HOME_MENU_NOTICE_TEXT } from "./MovedTo
  * the menu, because on the home it carries context the menu row does not:
  */
 const CONTEXTUAL_SHORTCUTS: Record<string, string> = {
+  // "/reclamar" is no longer a menu row (it lives in the "+ Agregar" sheet and in
+  // the empty state's link), so it cannot overlap; kept for the empty-state pair.
   "/reclamar": "the empty state's 'Reclamala con su chip o tatuaje' (0 pets only)",
   "/casos": "'Ver todos mis casos' inside the casos block (only while a caso is open)",
   "/transferencias": "'Esperan tu respuesta' → 'Ver N pedidos más' (only with > 3 pending)",
@@ -161,21 +164,27 @@ function controls() {
 
 /**
  * Press every control the home draws, one at a time, and return every route
- * that was pushed. Expanding a fold (CollapsibleModule) draws more controls, so
- * this repeats until a pass finds nothing new.
+ * that was pushed. The controls are re-read after EVERY press: expanding a fold
+ * (CollapsibleModule) or opening the "+ Agregar" sheet draws more of them, and
+ * choosing a sheet row closes it, which unmounts its sibling. Dismissals
+ * ("Cerrar" on a sheet backdrop) go nowhere and are skipped; a sheet row being
+ * chosen re-arms the opener so the OTHER row can be reached.
  */
+const SHEET_OPENER = "Agregar una mascota";
+const SHEET_ROWS = ["Registrar una mascota nueva", "Reclamar una ya registrada"];
+
 function pushedRoutesFromEverything(): string[] {
   const pressed = new Set<string>();
-  for (let pass = 0; pass < 4; pass += 1) {
-    let pressedSomething = false;
-    for (const node of controls()) {
-      const name = accessibleName(node);
-      if (pressed.has(name)) continue;
-      pressed.add(name);
-      pressedSomething = true;
-      fireEvent.press(node);
-    }
-    if (!pressedSomething) break;
+  for (let step = 0; step < 40; step += 1) {
+    const next = controls().find((control) => {
+      const name = accessibleName(control);
+      return name !== "Cerrar" && !pressed.has(name);
+    });
+    if (next === undefined) break;
+    const name = accessibleName(next);
+    pressed.add(name);
+    fireEvent.press(next);
+    if (SHEET_ROWS.includes(name)) pressed.delete(SHEET_OPENER);
   }
   return mockPush.mock.calls.map(([route]) => route);
 }
@@ -191,13 +200,15 @@ describe("the end of /mascotas", () => {
     mockFetchMyCases.mockResolvedValue(cases([]));
   });
 
-  it("ends at 'Registrar otra mascota' — the last control on the screen", async () => {
+  it("has no register button at the end — the last control is a pet row", async () => {
     mockFetchMyPets.mockResolvedValue(pets(2));
     render(<MisMascotasScreen />);
     await screen.findByText("Mascota 1");
 
     const names = controls().map(accessibleName);
-    expect(names.at(-1)).toBe("Registrar otra mascota");
+    expect(names.at(-1)).toMatch(/^Mascota 1/);
+    expect(names.filter((name) => name === "Agregar una mascota")).toHaveLength(1);
+    expect(names).not.toContain("Registrar otra mascota");
     for (const label of MENU_LABELS) {
       expect(names).not.toContain(label);
     }
@@ -205,13 +216,85 @@ describe("the end of /mascotas", () => {
     expect(screen.queryByText("Denunciar maltrato")).toBeNull();
   });
 
-  it("heads the list with 'Tus mascotas' and the count", async () => {
+  it("heads the list with 'Tus mascotas · N' — the count joins the title", async () => {
     mockFetchMyPets.mockResolvedValue(pets(2));
     render(<MisMascotasScreen />);
     await screen.findByText("Mascota 1");
 
-    expect(screen.getByText("Tus mascotas")).toBeTruthy();
-    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText("Tus mascotas · 2")).toBeTruthy();
+  });
+
+  it("draws the register action in the header row with one or more pets", async () => {
+    mockFetchMyPets.mockResolvedValue(pets(1));
+    render(<MisMascotasScreen />);
+    await screen.findByText("Mascota 0");
+
+    const action = screen.getByRole("button", { name: "Agregar una mascota" });
+    expect(action.props.accessibilityLabel).toBe("Agregar una mascota");
+    expect(screen.getByText("+ Agregar")).toBeTruthy();
+    // Its box is at least a 44dp touch target.
+    const style = Array.isArray(action.props.style) ? action.props.style : [action.props.style];
+    const flat = Object.assign({}, ...style.flat(Number.POSITIVE_INFINITY).filter(Boolean));
+    expect(flat.minHeight).toBeGreaterThanOrEqual(44);
+    expect(flat.flexShrink).toBe(0);
+
+    // It opens the sheet; it does not navigate by itself.
+    expect(screen.queryByText("Registrar una mascota nueva")).toBeNull();
+    fireEvent.press(action);
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(screen.getByText("Registrar una mascota nueva")).toBeTruthy();
+  });
+
+  it("the sheet lists Registrar first, then Reclamar, with their captions", async () => {
+    mockFetchMyPets.mockResolvedValue(pets(1));
+    render(<MisMascotasScreen />);
+    await screen.findByText("Mascota 0");
+    fireEvent.press(screen.getByRole("button", { name: "Agregar una mascota" }));
+
+    expect(screen.getByText("Cargala desde cero y obtené su credencial")).toBeTruthy();
+    expect(
+      screen.getByText("Si un veterinario o refugio ya la cargó: con su chip o tatuaje"),
+    ).toBeTruthy();
+    const names = screen.getAllByRole("button").map(accessibleName);
+    const register = names.indexOf("Registrar una mascota nueva");
+    const claim = names.indexOf("Reclamar una ya registrada");
+    expect(register).toBeGreaterThanOrEqual(0);
+    expect(claim).toBeGreaterThan(register);
+  });
+
+  it("'Registrar una mascota nueva' goes to the register route", async () => {
+    mockFetchMyPets.mockResolvedValue(pets(1));
+    render(<MisMascotasScreen />);
+    await screen.findByText("Mascota 0");
+    fireEvent.press(screen.getByRole("button", { name: "Agregar una mascota" }));
+    fireEvent.press(screen.getByRole("button", { name: "Registrar una mascota nueva" }));
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith("/alta");
+  });
+
+  it("'Reclamar una ya registrada' goes to the existing Reclamar route", async () => {
+    mockFetchMyPets.mockResolvedValue(pets(1));
+    render(<MisMascotasScreen />);
+    await screen.findByText("Mascota 0");
+    fireEvent.press(screen.getByRole("button", { name: "Agregar una mascota" }));
+    fireEvent.press(screen.getByRole("button", { name: "Reclamar una ya registrada" }));
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith("/reclamar");
+  });
+
+  it("Reclamar is not a row of the menu any more", () => {
+    expect(MENU_ROUTES.has("/reclamar")).toBe(false);
+    expect(MENU_LABELS).not.toContain("Reclamar una mascota");
+  });
+
+  it("keeps the big register CTA and no header action with zero pets", async () => {
+    mockFetchMyPets.mockResolvedValue(pets(0));
+    render(<MisMascotasScreen />);
+    await screen.findByText("Registrar una mascota");
+
+    expect(screen.queryByText("+ Agregar")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Agregar una mascota" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Registrar una mascota" })).toBeTruthy();
   });
 
   it("draws no destination in the failed state either — the header is the way out", async () => {
@@ -306,7 +389,7 @@ describe("the empty state", () => {
   it("draws no 'Tus mascotas' eyebrow over an empty list", async () => {
     render(<MisMascotasScreen />);
     await screen.findByText("Registrar una mascota");
-    expect(screen.queryByText("Tus mascotas")).toBeNull();
+    expect(screen.queryByText(/^Tus mascotas/)).toBeNull();
   });
 });
 

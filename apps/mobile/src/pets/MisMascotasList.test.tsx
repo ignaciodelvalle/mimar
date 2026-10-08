@@ -120,27 +120,26 @@ describe("the /mascotas list (FlatList)", () => {
     resetPetRowRenderCountForTests();
   });
 
-  it("renders every pet AND the footer's one action, footer last", async () => {
+  it("renders every pet AND the header's one register action, ahead of the rows", async () => {
     mockFetchMyPets.mockResolvedValue(twoPets());
     render(<MisMascotasScreen />);
 
     await screen.findByText("Firulais");
     expect(screen.getByText("Michi")).toBeTruthy();
 
-    // AFTER THE ROWS, BY POSITION — `ListFooterComponent`/`data` could in
-    // principle land in either order in the rendered tree.
-    // `getAllByRole("button")` returns matches in tree order, so the last pet
-    // row's index must be BELOW the footer action's, and that action is the
-    // last button on the screen.
+    // BEFORE THE ROWS, BY POSITION — the action lives in the list's header
+    // (`ListHeaderComponent`), so it precedes every pet row in tree order, and
+    // there is exactly one of it (no second door at the bottom any more).
     const names = screen.getAllByRole("button").map(accessibleName);
-    const lastPetIndex = Math.max(
+    const firstPetIndex = Math.min(
       names.findIndex((name) => name.startsWith("Firulais")),
       names.findIndex((name) => name.startsWith("Michi")),
     );
-    const registerIndex = names.indexOf("Registrar otra mascota");
-    expect(lastPetIndex).toBeGreaterThanOrEqual(0);
-    expect(registerIndex).toBeGreaterThan(lastPetIndex);
-    expect(registerIndex).toBe(names.length - 1);
+    const registerIndex = names.indexOf("Agregar una mascota");
+    expect(firstPetIndex).toBeGreaterThanOrEqual(0);
+    expect(registerIndex).toBeGreaterThanOrEqual(0);
+    expect(registerIndex).toBeLessThan(firstPetIndex);
+    expect(names.filter((name) => name === "Agregar una mascota")).toHaveLength(1);
 
     // And none of the menu's destinations is drawn in the body any more.
     for (const destination of NAV_DESTINATIONS) {

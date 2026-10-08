@@ -39,7 +39,6 @@ const EXPECTED_SECTIONS = [
     title: "Mis mascotas",
     rows: [
       { label: "Transferencias", route: "/transferencias" },
-      { label: "Reclamar una mascota", route: "/reclamar" },
       { label: "Tránsito", route: "/cuenta/transito" },
     ],
   },
@@ -71,14 +70,14 @@ function openMenu() {
 }
 
 describe("NAV_SECTIONS", () => {
-  it("is the approved menu: four groups, eight rows, in this order", () => {
+  it("is the approved menu: four groups, seven rows, in this order", () => {
     expect(
       NAV_SECTIONS.map((section) => ({
         title: section.title,
         rows: section.destinations.map((d) => ({ label: d.label, route: d.route })),
       })),
     ).toEqual(EXPECTED_SECTIONS);
-    expect(NAV_DESTINATIONS).toHaveLength(8);
+    expect(NAV_DESTINATIONS).toHaveLength(7);
   });
 
   it("has one row per route — no destination reachable twice from the menu", () => {
