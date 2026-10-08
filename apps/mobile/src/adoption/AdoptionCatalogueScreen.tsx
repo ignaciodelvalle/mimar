@@ -14,6 +14,13 @@
 // animals are all reachable by scrolling, so a missing filter costs patience
 // rather than access.
 //
+// NO BODY TITLE. The stack header already says "Adoptar" (`app/_layout.tsx`);
+// a second "Adoptar" in serif right under it read as the screen stuttering.
+// The subtitle stays — it is the only sentence that says who published these.
+//
+// EVERY CARD CARRIES ITS PHOTO (`photoUrl`, already on the wire) or the
+// document's paw when the shelter uploaded none — see `AdoptionPhoto.tsx`.
+//
 // PAGINATION IS "MOSTRAR MÁS" AND NOT INFINITE SCROLL, mirroring the web. The
 // cursor is the server's own opaque string, appended rather than replacing the
 // list, so somebody who has scrolled through four pages does not lose them by
@@ -26,11 +33,13 @@ import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native"
 import { type ApiResult, apiFailureMessage } from "../api/client";
 import { fetchAdoptionCatalogue } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
-import { EmptyState, ErrorNotice, Loading, StaleNotice } from "../ui/components";
+import { EmptyState, ErrorNotice, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { Choice, Screen, SecondaryButton, Subtitle, Title } from "../ui/kit";
+import { Choice, Screen, SecondaryButton, Subtitle } from "../ui/kit";
+import { ListSkeleton } from "../ui/skeleton";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
 
+import { AdoptionThumb } from "./AdoptionPhoto";
 import { cardBadges, cardSubtitle, catalogueEmpty, catalogueSummary } from "./adoption-view-model";
 
 type ScreenState =
@@ -132,7 +141,7 @@ export function AdoptionCatalogueScreen({
   if (state.phase === "loading") {
     return (
       <Screen>
-        <Loading label="Buscando mascotas…" />
+        <ListSkeleton rows={4} label={CATALOGUE_STRINGS.loading} />
       </Screen>
     );
   }
@@ -140,7 +149,6 @@ export function AdoptionCatalogueScreen({
   if (state.phase === "failed") {
     return (
       <Screen>
-        <Title>Adoptar</Title>
         <ErrorNotice message={state.message} onRetry={() => void load(species)} />
       </Screen>
     );
@@ -152,7 +160,6 @@ export function AdoptionCatalogueScreen({
     <Screen
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}
     >
-      <Title>Adoptar</Title>
       <Subtitle>
         Mascotas publicadas por refugios verificados. Si ves alguna que te resuene, postulate y el
         refugio te contacta.
@@ -217,21 +224,24 @@ function AdoptionCard({
       onPress={onPress}
       style={styles.card}
     >
-      <Text style={styles.cardName}>{item.name}</Text>
-      {subtitle === "" ? null : <Text style={styles.cardSubtitle}>{subtitle}</Text>}
-      {item.facts.length === 0 ? null : (
-        <Text style={styles.cardFacts}>{item.facts.join(" · ")}</Text>
-      )}
-      {badges.length === 0 ? null : (
-        <View style={styles.badges}>
-          {badges.map((badge) => (
-            <Text key={badge} style={styles.badge}>
-              {badge}
-            </Text>
-          ))}
-        </View>
-      )}
-      <Text style={styles.cardOrg}>{item.orgName}</Text>
+      <AdoptionThumb uri={item.photoUrl} />
+      <View style={styles.cardText}>
+        <Text style={styles.cardName}>{item.name}</Text>
+        {subtitle === "" ? null : <Text style={styles.cardSubtitle}>{subtitle}</Text>}
+        {item.facts.length === 0 ? null : (
+          <Text style={styles.cardFacts}>{item.facts.join(" · ")}</Text>
+        )}
+        {badges.length === 0 ? null : (
+          <View style={styles.badges}>
+            {badges.map((badge) => (
+              <Text key={badge} style={styles.badge}>
+                {badge}
+              </Text>
+            ))}
+          </View>
+        )}
+        <Text style={styles.cardOrg}>{item.orgName}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -254,9 +264,12 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.control,
     backgroundColor: COLORS.surface,
     padding: SPACE.md,
-    gap: SPACE.xs,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACE.md,
     minHeight: TOUCH_TARGET,
   },
+  cardText: { flex: 1, gap: SPACE.xs },
   cardName: {
     fontFamily: FONTS.serif,
     fontSize: TYPE.lg,

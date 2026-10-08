@@ -17,11 +17,12 @@
 // `sterilizedLabel` arrive resolved, because three of them agree with the
 // animal's sex and the web already shipped "Castrada" over a male dog once.
 //
-// NO PHOTOS YET, and it is a gap rather than a decision: the payload carries
-// `photoUrls` and this screen does not render them. `expo-image` is not in this
-// app's dependencies, and adding a native module is an EAS build — the pipeline
-// row #1 of the board rules out for now. The URLs are on the wire so the day the
-// build lands this is a render and not a round trip.
+// THE PHOTOS LEAD THE FICHA. `photoUrls` was on the wire from the start, and
+// this header used to say drawing it needed `expo-image` and a store build. It
+// never did: React Native's core <Image> already draws remote photos elsewhere
+// in this app, so the hero (and the pager, when the shelter uploaded several)
+// is a JS-only render — see `AdoptionPhoto.tsx`. No photo is the paw, never a
+// gap.
 
 import type { AdoptionDetailListedV1, AdoptionDetailV1 } from "@dim/contract/api";
 import { useFocusEffect } from "expo-router";
@@ -38,6 +39,7 @@ import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { COLORS, LEADING, RADIUS, SPACE, TRACKING, TYPE } from "../ui/theme";
 import { useReconnect } from "../ui/use-reconnect";
 
+import { AdoptionHero } from "./AdoptionPhoto";
 import {
   applyBlockedCopy,
   closedFichaCopy,
@@ -174,6 +176,7 @@ function ListedFicha({
   return (
     <Screen>
       {stale}
+      <AdoptionHero uris={detail.photoUrls} petName={detail.name} />
       <Title>{detail.name}</Title>
       {detail.breed === null ? null : <Text style={styles.breed}>{detail.breed}</Text>}
       <Text style={styles.meta}>

@@ -97,3 +97,54 @@ describe('"Mostrar más" that could not read the next page', () => {
     expect(screen.queryByText("No pudimos actualizar")).toBeNull();
   });
 });
+
+describe("the catalogue's chrome and photos", () => {
+  it("shows a list skeleton, not a spinner, while the first page loads", () => {
+    mockFetch.mockReturnValueOnce(new Promise(() => {}));
+    render(<AdoptionCatalogueScreen onOpenPet={noop} onOpenMyApplications={noop} />);
+    // The skeleton announces itself once, with the sentence the spinner carried.
+    expect(screen.getByLabelText("Buscando mascotas…")).toBeTruthy();
+    expect(screen.queryByText("Buscando mascotas…")).toBeNull();
+  });
+
+  it("does not repeat the stack header's title in the body", async () => {
+    mockFetch.mockResolvedValueOnce(page([anItem()], null));
+    render(<AdoptionCatalogueScreen onOpenPet={noop} onOpenMyApplications={noop} />);
+    await screen.findByText("Lola");
+    expect(screen.queryByText("Adoptar")).toBeNull();
+  });
+
+  it("draws each card's photo when the shelter uploaded one", async () => {
+    mockFetch.mockResolvedValueOnce(
+      page([anItem({ photoUrl: "https://cdn.test/lola.jpg" })], null),
+    );
+    render(<AdoptionCatalogueScreen onOpenPet={noop} onOpenMyApplications={noop} />);
+    await screen.findByText("Lola");
+    const photo = screen.getByTestId("adoption-thumb", { includeHiddenElements: true });
+    expect(photo.props.source).toEqual({ uri: "https://cdn.test/lola.jpg" });
+    expect(
+      screen.queryByTestId("adoption-thumb-fallback", { includeHiddenElements: true }),
+    ).toBeNull();
+  });
+
+  it("draws the paw when there is no photo", async () => {
+    mockFetch.mockResolvedValueOnce(page([anItem({ photoUrl: null })], null));
+    render(<AdoptionCatalogueScreen onOpenPet={noop} onOpenMyApplications={noop} />);
+    await screen.findByText("Lola");
+    expect(
+      screen.getByTestId("adoption-thumb-fallback", { includeHiddenElements: true }),
+    ).toBeTruthy();
+  });
+
+  it("falls back to the paw when the photo fails to load", async () => {
+    mockFetch.mockResolvedValueOnce(
+      page([anItem({ photoUrl: "https://cdn.test/broken.jpg" })], null),
+    );
+    render(<AdoptionCatalogueScreen onOpenPet={noop} onOpenMyApplications={noop} />);
+    await screen.findByText("Lola");
+    fireEvent(screen.getByTestId("adoption-thumb", { includeHiddenElements: true }), "error");
+    expect(
+      screen.getByTestId("adoption-thumb-fallback", { includeHiddenElements: true }),
+    ).toBeTruthy();
+  });
+});
