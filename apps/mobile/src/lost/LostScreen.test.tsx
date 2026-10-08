@@ -740,7 +740,9 @@ describe("LostScreen — the poster, as a PDF from the phone (M13)", () => {
 
   async function pressPoster() {
     render(<LostScreen publicToken={TOKEN} />);
-    fireEvent.press(await screen.findByText("Compartir o imprimir el cartel"));
+    // The poster folds behind its module: the primary already shares the search.
+    fireEvent.press(await screen.findByText("Cartel para imprimir"));
+    fireEvent.press(screen.getByText("Compartir o imprimir el cartel"));
   }
 
   it("is not offered for an animal that is not lost — the web draws it on the same fact", async () => {
@@ -1167,5 +1169,209 @@ describe("LostScreen — the home-locality chip on marcar perdida (PO, 2026-09-2
       localityIndecId: "42021010",
     });
     expect(sentBody()?.localityPicked).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Custody polish (2026-10-07) — one primary per state, the rest as rows
+// ---------------------------------------------------------------------------
+//
+// THE INVENTORY, taken from the screen BEFORE it was split into panes and its
+// six primaries and ten secondaries became one primary per state, rows and
+// folding modules. Presentation changed; reachability may not.
+//
+//   failed        · Reintentar
+//   not lost      · Marcar como perdida → (form) Marcar como perdida · Cancelar
+//                   · each editable disclosure switch · Actualizar
+//   lost, active  · Compartir la búsqueda · Marcar como encontrada → Sí, la
+//                   encontré · Cancelar · Actualizar dónde la vieron → Guardar
+//                   avistaje · Cancelar · Compartir o imprimir el cartel · each
+//                   disclosure switch · Reportar (feed) → each motive · Reportar
+//                   · Cancelar · Actualizar
+//   lost, stale   · Reactivar búsqueda · Compartir la búsqueda · Marcar como
+//                   encontrada
+describe("LostScreen — every action the old screen offered is still reachable", () => {
+  /**
+   * The button that draws EXACTLY this label. Walked up from the text rather
+   * than matched by accessible name, because a row's name carries its caption
+   * and "Actualizar" is a prefix of "Actualizar dónde la vieron".
+   */
+  function expectReachable(label: string) {
+    let node: ReturnType<typeof screen.getByText> | null = screen.getByText(label);
+    while (node !== null && node.props.accessibilityRole !== "button") node = node.parent;
+    if (node === null) throw new Error(`no button draws "${label}"`);
+    expect(node).toBeEnabled();
+    return node;
+  }
+
+  function expectSwitches(count: number) {
+    const switches = screen.getAllByRole("switch");
+    expect(switches).toHaveLength(count);
+    for (const control of switches) expect(control).toBeEnabled();
+  }
+
+  it("draws a skeleton, not a spinner, while it reads", () => {
+    mockFetch.mockReturnValue(new Promise(() => {}));
+    render(<LostScreen publicToken={TOKEN} />);
+    expect(screen.getByLabelText("Leyendo la búsqueda…")).toBeOnTheScreen();
+  });
+
+  it("failed: Reintentar", async () => {
+    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText(/Revisá tu conexión/);
+    expectReachable("Reintentar");
+  });
+
+  it("not lost: marcar perdida and its whole form, the switches, Actualizar", async () => {
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText("Marcar como perdida");
+    expectSwitches(ALL_KEYS.length);
+    expectReachable("Actualizar");
+
+    fireEvent.press(expectReachable("Marcar como perdida"));
+    expectReachable("Marcar como perdida");
+    expectReachable("Cancelar");
+    expectSwitches(5);
+    // The optional description folds; every field in it is one tap away.
+    fireEvent.press(expectReachable("Cómo reconocerla"));
+    for (const field of [
+      "Color",
+      "Señas particulares",
+      "Qué llevaba puesto",
+      "Cómo se comporta",
+      "Contexto del extravío",
+      "Número de microchip",
+    ]) {
+      expect(screen.getByLabelText(field)).toBeOnTheScreen();
+    }
+    fireEvent.press(expectReachable("Cancelar"));
+    expectReachable("Marcar como perdida");
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("lost: share, found with its two steps, the avistaje, the poster, the switches, Actualizar", async () => {
+    mockFetch.mockResolvedValue(ok(searching()));
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText("Compartir la búsqueda");
+
+    expectReachable("Compartir la búsqueda");
+    fireEvent.press(expectReachable("Marcar como encontrada"));
+    expectReachable("Sí, la encontré");
+    fireEvent.press(expectReachable("Cancelar"));
+
+    fireEvent.press(expectReachable("Actualizar dónde la vieron"));
+    expectReachable("Guardar avistaje");
+    fireEvent.press(expectReachable("Cancelar"));
+
+    fireEvent.press(expectReachable("Cartel para imprimir"));
+    expectReachable("Compartir o imprimir el cartel");
+
+    fireEvent.press(expectReachable("Qué se muestra en la credencial pública"));
+    expectSwitches(ALL_KEYS.length);
+    expectReachable("Actualizar");
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("lost: Reportar on a feed row, every motive, and its way back", async () => {
+    mockFetch.mockResolvedValue(ok(searching({ feed: REPORTABLE_FEED })));
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText("Alguien la vio");
+    fireEvent.press(theReportControl());
+
+    const motives = screen.getAllByRole("radio");
+    expect(motives.length).toBeGreaterThanOrEqual(2);
+    for (const motive of motives) expect(motive).toBeEnabled();
+    expectReachable("Reportar");
+    fireEvent.press(expectReachable("Cancelar"));
+    expect(screen.getAllByLabelText(/Reportar este mensaje/)).toHaveLength(1);
+  });
+
+  it("lost, stale: reactivar leads, and share and found are still there", async () => {
+    mockFetch.mockResolvedValue(
+      ok(
+        payload({
+          status: "lost",
+          episode: null,
+          capabilities: {
+            canMarkLost: false,
+            canReportLastSeen: false,
+            canMarkFound: true,
+            canReactivateSearch: true,
+            canReportContent: true,
+            editableDisclosureKeys: [...ALL_KEYS],
+          },
+        }),
+      ),
+    );
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText("Reactivar búsqueda");
+    expectReachable("Reactivar búsqueda");
+    expectReachable("Compartir la búsqueda");
+    expectReachable("Marcar como encontrada");
+  });
+});
+
+/** Every string the screen draws, in the order it draws them. */
+function textsInOrder(): string[] {
+  const out: string[] = [];
+  const walk = (node: unknown) => {
+    if (node === null || node === undefined) return;
+    if (typeof node === "string") {
+      out.push(node);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    const children = (node as { children?: unknown }).children;
+    if (children) walk(children);
+  };
+  walk(screen.toJSON());
+  return out;
+}
+
+describe("LostScreen — in perdida, the two acts that matter are first (custody polish)", () => {
+  // THE REQUIREMENT: sharing the alert and marking her found must be on screen
+  // WITHOUT SCROLLING at font scale 1.3. Jest has no viewport, so this holds
+  // the property that makes it true: nothing but the header and the one-line
+  // situation is drawn above them — no case detail, no feed, no poster, no
+  // privacy rows — so what precedes them is a few short lines at any scale.
+  it("draws only the header and the situation above share and found", async () => {
+    mockFetch.mockResolvedValue(ok(searching({ feed: REPORTABLE_FEED })));
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText("Compartir la búsqueda");
+
+    const texts = textsInOrder();
+    const share = texts.indexOf("Compartir la búsqueda");
+    const found = texts.indexOf("Marcar como encontrada");
+    expect(share).toBeGreaterThan(-1);
+    expect(found).toBe(share + 1);
+    expect(texts.slice(0, share)).toEqual([
+      "Modo perdida",
+      "Búsqueda",
+      "Pampa está perdida. La búsqueda está activa.",
+    ]);
+    for (const later of [
+      LOST_EPISODE.publicCode,
+      "Avistajes y escaneos",
+      "Cartel para imprimir",
+      "Qué se muestra en la credencial pública",
+    ]) {
+      expect(texts.indexOf(later)).toBeGreaterThan(found);
+    }
+  });
+
+  it("keeps one primary on screen while the found confirmation is open", async () => {
+    mockFetch.mockResolvedValue(ok(searching()));
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como encontrada"));
+    // The confirmation replaces the row in place, still above everything else.
+    const texts = textsInOrder();
+    expect(texts.indexOf("Sí, la encontré")).toBeLessThan(texts.indexOf(LOST_EPISODE.publicCode));
+    expect(screen.queryByText("Compartir la búsqueda")).toBeNull();
+    fireEvent.press(screen.getByText("Cancelar"));
+    expect(screen.getByText("Compartir la búsqueda")).toBeOnTheScreen();
   });
 });
