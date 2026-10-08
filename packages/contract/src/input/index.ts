@@ -354,8 +354,10 @@ export {
   type PetSpecies,
   type RegisterPetInput,
   type RegisterPetInputCode,
+  type StatedAgeCode,
   firstRegisterPetInputCode,
   registerPetInputSchema,
+  statedAgeRefusal,
 } from "./register-pet.ts";
 export {
   REHOME_COMMAND_INPUT_CODES,
