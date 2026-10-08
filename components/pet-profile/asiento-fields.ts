@@ -38,7 +38,13 @@ import {
 } from "@/lib/events/events";
 import { isTripPapersAmendment } from "@/lib/infra/amendment";
 import { isRabiesVaccineName } from "@/lib/reference/lookups";
-import { AR_TIME_ZONE, calendarDaysAgoInAr, eventTypeLabel, isoDateInAr } from "@/lib/utils/format";
+import {
+  AR_TIME_ZONE,
+  calendarDaysAgoInAr,
+  eventTypeLabel,
+  isoDateInAr,
+  pluralizeEs,
+} from "@/lib/utils/format";
 import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/types";
 
 export type AsientoFact = {
@@ -176,7 +182,7 @@ export function tripPapersTickKey(
 
 /** "Papeles del viaje actualizados · 3 cambios · Chile". */
 export function tripPapersGroupLabel(count: number, country: string | null): string {
-  return [TRIP_PAPERS_UPDATED_LABEL, count === 1 ? "1 cambio" : `${count} cambios`, country]
+  return [TRIP_PAPERS_UPDATED_LABEL, `${count} ${pluralizeEs(count, "cambio")}`, country]
     .filter(Boolean)
     .join(" · ");
 }
