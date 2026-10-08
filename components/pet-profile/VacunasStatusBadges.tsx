@@ -88,9 +88,13 @@ export function metaFor(v: VaccineSnapshot): string {
       return "Sin confirmar — hay una dosis registrada que no pudimos identificar";
     case "active":
       if (isDeclaredCurrent(v)) {
-        return v.nextDueAt && v.dueSource === "derived"
+        // The date says what the asiento's own line says for the same dose:
+        // "Refuerzo sugerido" for a catalog estimate, "Vence" for a date
+        // written on the record (QA v14 review — the payload date was dropped).
+        if (!v.nextDueAt) return "Declarada — falta verificación profesional";
+        return v.dueSource === "derived"
           ? `Declarada · refuerzo sugerido ${fmtDate(v.nextDueAt)}`
-          : "Declarada — falta verificación profesional";
+          : `Declarada · vence ${fmtDate(v.nextDueAt)}`;
       }
       return v.nextDueAt ? `Próxima ${fmtDate(v.nextDueAt)}` : "Al día";
     case "due_soon":

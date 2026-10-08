@@ -685,3 +685,39 @@ describe("one owner-declared rabies dose without an expiry — front, back and a
     expect(deriveVacunasBadgeCounts(summary).vigente).toBe(1);
   });
 });
+
+describe("a declared dose with a WRITTEN expiry — badge and asiento agree (QA v14 review)", () => {
+  const DOSE_NOW = new Date("2026-10-07T15:00:00Z");
+  const declaredWithDate: HistorialEventRow = {
+    id: "evt-declared-dated",
+    petId: "pet-1",
+    eventType: "vaccination_administered",
+    payload: { vaccine_name: "Antirrábica", next_due_at: "2027-09-01" },
+    occurredAt: new Date("2026-09-01T15:00:00Z"),
+    notes: null,
+    recordedByUserId: GRACIELA,
+    authorRole: "owner",
+    authorVerified: false,
+    authorOrganizationId: null,
+    attachmentUrl: null,
+    hasAttachment: false,
+    amendedAt: null,
+  };
+
+  it("both print the same date, both as 'vence'", () => {
+    const rabies = computeVaccinationSummary([declaredWithDate], "dog", DOSE_NOW).perVaccine.find(
+      (v) => v.vaccineName === "Antirrábica",
+    );
+    const vence = toAsientoView(declaredWithDate, "TOKEN-1234", SELF, DOSE_NOW).facts.find(
+      (f) => f.key === "Vence",
+    );
+    expect(rabies?.dueSource).toBe("payload");
+    expect(rabies && metaFor(rabies)).toMatch(/^Declarada · vence /);
+    expect(vence?.missing).toBeUndefined();
+    // Same calendar day on both: "1 de sept de 2027" vs the asiento's absolute date.
+    expect(rabies && metaFor(rabies)).toContain("2027");
+    expect(vence?.value).toContain("2027");
+    expect(rabies && metaFor(rabies)).toMatch(/\b1 de sept?/);
+    expect(vence?.value).toMatch(/\b1 de sept?/);
+  });
+});
