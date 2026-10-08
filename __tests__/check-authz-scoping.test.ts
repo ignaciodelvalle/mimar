@@ -16,6 +16,7 @@ import { GUARD_HOMES } from "@/scripts/check-authz-guards";
 import {
   MIN_SCOPED,
   MIN_SUBJECTS,
+  type ModuleResolver,
   TENANT_GUARDS,
   analyzeActions,
   findScopingOffenders,
@@ -433,6 +434,224 @@ describe("scoped: authority reaches the work", () => {
     expect(findScopingOffenders("app/actions/x.ts", src)).toEqual([
       "app/actions/x.ts#revokeVetRoleAction",
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Export shapes and import aliases (A13) — every way a client can reach a body
+// ---------------------------------------------------------------------------
+
+/** An in-memory module graph: specifier → source. Nothing touches the disk. */
+const modules =
+  (graph: Record<string, string>): ModuleResolver =>
+  (_from, spec) =>
+    graph[spec] === undefined ? null : { relPath: spec.replace(/^@\//, ""), src: graph[spec] };
+const noModules: ModuleResolver = () => null;
+
+const UNSCOPED_BODY = "{ await requireAdminOrRedirect(); return w(id); }";
+const SCOPED_BODY = "{ const { user } = await requireAdminOrRedirect(); return w(user.id, id); }";
+
+describe("export shapes: aliased guard imports", () => {
+  it("FLAGS an action whose tenant guard was renamed on import", () => {
+    const src = lines(
+      'import { requireOrgAccessByToken as guard } from "@/lib/infra/org-access";',
+      "export async function a(token: string, id: string) {",
+      "  await guard(token);",
+      "  return w(id);",
+      "}",
+    );
+    expect(verdict(src)).toMatchObject({ subject: true, scopedBy: null });
+    expect(findScopingOffenders("app/actions/x.ts", src, noModules)).toEqual([
+      "app/actions/x.ts#a",
+    ]);
+  });
+
+  it("accepts the renamed guard when its result reaches the work", () => {
+    const v = verdict(
+      lines(
+        'import { requireOrgAccessByToken as guard } from "@/lib/infra/org-access";',
+        "export async function a(token: string, id: string) {",
+        "  const { organization } = await guard(token);",
+        "  return w(organization.id, id);",
+        "}",
+      ),
+    );
+    expect(v.subject).toBe(true);
+    expect(v.scopedBy).toMatch(/organization → w\(\)/);
+  });
+
+  it("a renamed SESSION SOURCE still taints what it binds", () => {
+    const v = verdict(
+      lines(
+        'import { getUser as whoAmI } from "@/lib/infra/auth";',
+        "export async function a(id: string) {",
+        "  await requireAdminOrRedirect();",
+        "  const me = await whoAmI();",
+        "  return w(me.id, id);",
+        "}",
+      ),
+    );
+    expect(v.scopedBy).toMatch(/^me → w\(\)/);
+  });
+
+  it("a LOCAL that shadows the alias is the local, not the guard", () => {
+    const [v] = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        'import { requireAdminOrRedirect as guard } from "@/lib/infra/auth-guards";',
+        "export async function a(id: string) {",
+        "  const guard = (x: string) => x;",
+        "  return w(guard(id));",
+        "}",
+      ),
+      noModules,
+    );
+    expect(v.subject).toBe(false);
+  });
+});
+
+describe("export shapes: export { a } / export { a as b } of a local action", () => {
+  it("FLAGS a local unscoped action exported by a later export clause, under the EXPORTED name", () => {
+    const src = lines(
+      `async function a(id: string) ${UNSCOPED_BODY}`,
+      "export { a };",
+      `async function c(id: string) ${UNSCOPED_BODY}`,
+      "export { c as renamed };",
+    );
+    expect(findScopingOffenders("app/actions/x.ts", src, noModules)).toEqual([
+      "app/actions/x.ts#a",
+      "app/actions/x.ts#renamed",
+    ]);
+    // The line is the export clause's: that is where the name is published.
+    expect(analyzeActions("app/actions/x.ts", src, noModules).map((v) => v.line)).toEqual([2, 4]);
+  });
+
+  it("FLAGS `export const b = a` — an alias is the action it aliases", () => {
+    const src = lines(`const a = async (id: string) => ${UNSCOPED_BODY};`, "export const b = a;");
+    expect(findScopingOffenders("app/actions/x.ts", src, noModules)).toEqual([
+      "app/actions/x.ts#b",
+    ]);
+  });
+
+  it("follows a cast alias, and FAILS CLOSED on an action wrapped by a call", () => {
+    const vs = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        `async function a(id: string) ${UNSCOPED_BODY}`,
+        "export const cast = a as typeof a;",
+        "export const wrapped = withAuth(a);",
+        "export const helper = makeThing(LIMIT);",
+      ),
+      noModules,
+    );
+    expect(vs.map((v) => [v.name, v.subject, v.scopedBy, v.unresolved !== undefined])).toEqual([
+      ["cast", true, null, false],
+      ["wrapped", false, null, true],
+    ]);
+  });
+
+  it("does not flag a scoped local exported the same ways, nor a non-action export", () => {
+    const vs = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        `async function a(id: string) ${SCOPED_BODY}`,
+        "function sync() { return 1; }",
+        "const LIMIT = 5;",
+        "export { a, a as b, sync, LIMIT };",
+        "export type { Foo } from './types';",
+      ),
+      noModules,
+    );
+    expect(vs.map((v) => [v.name, v.subject, v.scopedBy !== null])).toEqual([
+      ["a", true, true],
+      ["b", true, true],
+    ]);
+  });
+
+  it("honours @no-auth-required on the declaration the export clause points at", () => {
+    const vs = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        "// @no-auth-required: cron writer, CRON_SECRET-gated route",
+        `async function cron(id: string) ${UNSCOPED_BODY}`,
+        "export { cron };",
+      ),
+      noModules,
+    );
+    expect(vs).toMatchObject([{ name: "cron", subject: false }]);
+  });
+});
+
+describe("export shapes: re-exports of a body that lives in another module", () => {
+  const unscopedLib = `export async function a(id: string) ${UNSCOPED_BODY}`;
+  const scopedLib = `export async function a(id: string) ${SCOPED_BODY}`;
+
+  it("FLAGS `export { a } from` an unscanned module, keyed by the scanned file", () => {
+    const resolve = modules({ "@/lib/a": unscopedLib });
+    expect(
+      findScopingOffenders("app/actions/x.ts", 'export { a as act } from "@/lib/a";', resolve),
+    ).toEqual(["app/actions/x.ts#act"]);
+  });
+
+  it("FLAGS the import-then-export shape and `export *` the same way", () => {
+    const resolve = modules({ "@/lib/a": unscopedLib, "./b": 'export { a } from "@/lib/a";' });
+    expect(
+      findScopingOffenders(
+        "app/actions/x.ts",
+        lines('import { a } from "@/lib/a";', "export { a };"),
+        resolve,
+      ),
+    ).toEqual(["app/actions/x.ts#a"]);
+    // Two hops: x → ./b → @/lib/a.
+    expect(findScopingOffenders("app/actions/x.ts", 'export * from "./b";', resolve)).toEqual([
+      "app/actions/x.ts#a",
+    ]);
+  });
+
+  it("does not flag a re-exported action whose body IS scoped, nor a re-exported constant", () => {
+    const resolve = modules({
+      "@/lib/a": lines(scopedLib, "export const LIMIT = 5;"),
+    });
+    const vs = analyzeActions(
+      "app/actions/x.ts",
+      lines('export { a, LIMIT } from "@/lib/a";', 'export * from "@/lib/a";'),
+      resolve,
+    );
+    expect(vs.map((v) => [v.name, v.subject, v.scopedBy !== null, v.unresolved])).toEqual([
+      ["a", true, true, undefined],
+      ["a", true, true, undefined],
+    ]);
+  });
+
+  it("a re-export the fence cannot follow is UNRESOLVED and fails the scan — never a silent pass", () => {
+    const resolve = modules({ "@/lib/a": scopedLib });
+    const scan = scanSurface(
+      [
+        {
+          relPath: "app/actions/x.ts",
+          src: lines(
+            'export { b } from "@/lib/a";', // the module does not export it
+            'export { c } from "some-package";', // packages are not followed
+            'import { d } from "@/lib/missing";',
+            "export { d };",
+          ),
+        },
+      ],
+      resolve,
+    );
+    expect([...scan.unresolved.keys()]).toEqual([
+      "app/actions/x.ts#b",
+      "app/actions/x.ts#c",
+      "app/actions/x.ts#d",
+    ]);
+    expect(scan.unresolved.get("app/actions/x.ts#c")).toMatch(/cannot resolve "some-package"/);
+    expect(scan.subjects).toBe(0);
+  });
+
+  it("a cyclic alias chain ends as unresolved instead of recursing forever", () => {
+    const resolve = modules({ "./x": 'export { a } from "./x";' });
+    const [v] = analyzeActions("app/actions/x.ts", 'export { a } from "./x";', resolve);
+    expect(v.unresolved).toMatch(/deeper than/);
   });
 });
 
