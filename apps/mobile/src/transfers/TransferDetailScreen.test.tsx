@@ -445,3 +445,86 @@ describe("what is on screen", () => {
     expect(screen.getByText("vecina@example.com")).toBeTruthy();
   });
 });
+
+// THE INVENTORY, taken from the screen BEFORE the custody polish (2026-10-07)
+// moved it from twelve stacked buttons to one primary per state plus rows.
+// Presentation changed; reachability may not. Every action the old screen
+// offered in each state is listed here and must still be a pressable, enabled
+// button in that state — the second steps included, reached the way a person
+// reaches them.
+//
+//   failed  · Reintentar
+//   missing · Reintentar · Entrar con otra cuenta
+//   ready   · Aceptar la titularidad → Sí, aceptar la titularidad · No, volver
+//           · Rechazar la propuesta → (Motivo) Confirmar el rechazo · Volver
+//           · Retirar la propuesta → Confirmar cancelación · Atrás
+describe("every action the old screen offered is still reachable (custody polish)", () => {
+  function escapeRegExp(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  /** The control whose accessible name STARTS with the label (a row adds its caption). */
+  function expectReachable(label: string) {
+    const control = screen.getByRole("button", { name: new RegExp(`^${escapeRegExp(label)}`) });
+    expect(control).toBeEnabled();
+    return control;
+  }
+
+  it("draws a skeleton, not a spinner, while it reads", () => {
+    mockFetch.mockReturnValue(new Promise(() => {}));
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    expect(screen.getByLabelText("Cargando la propuesta…")).toBeOnTheScreen();
+  });
+
+  it("failed: Reintentar", async () => {
+    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText(/No pudimos conectarnos/);
+    expectReachable("Reintentar");
+  });
+
+  it("missing: Reintentar and Entrar con otra cuenta", async () => {
+    loads(aTransfer({ transferToken: "PTR-OTHER-0001" }));
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText(/no sea para vos/);
+    expectReachable("Reintentar");
+    expectReachable("Entrar con otra cuenta");
+  });
+
+  it("incoming: accept with its confirmation, and reject with its form", async () => {
+    loads(aTransfer());
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText("Aceptar la titularidad");
+
+    fireEvent.press(expectReachable("Aceptar la titularidad"));
+    expectReachable("Sí, aceptar la titularidad");
+    fireEvent.press(expectReachable("No, volver"));
+
+    fireEvent.press(expectReachable("Rechazar la propuesta"));
+    expect(screen.getByLabelText("Motivo del rechazo")).toBeOnTheScreen();
+    expectReachable("Confirmar el rechazo");
+    fireEvent.press(expectReachable("Volver"));
+
+    // Back where it started: both answers on offer again, nothing sent.
+    expectReachable("Aceptar la titularidad");
+    expectReachable("Rechazar la propuesta");
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("outgoing: withdraw with its confirmation", async () => {
+    loads(
+      aTransfer({
+        direction: "outgoing",
+        capabilities: { canAccept: false, canReject: false, canCancel: true },
+      }),
+    );
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText("Retirar la propuesta");
+
+    fireEvent.press(expectReachable("Retirar la propuesta"));
+    expectReachable("Confirmar cancelación");
+    fireEvent.press(expectReachable("Atrás"));
+    expectReachable("Retirar la propuesta");
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+});
