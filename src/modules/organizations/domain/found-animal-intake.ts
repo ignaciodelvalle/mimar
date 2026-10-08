@@ -138,6 +138,30 @@ export type FoundAnimalIntakeInput = {
  * neither: a kind with no value, or a value with no kind, is refused rather
  * than half-stored.
  */
+/** Why a published contact value is refused, or null when it is fine. */
+function contactValueError(kind: IntakeContactKind, value: string): string | null {
+  if (value.length < INTAKE_CONTACT_MIN || value.length > INTAKE_CONTACT_MAX) {
+    return `El contacto debe tener entre ${INTAKE_CONTACT_MIN} y ${INTAKE_CONTACT_MAX} caracteres.`;
+  }
+  if ((kind === "telefono" || kind === "whatsapp") && !PHONE_RE.test(value)) {
+    return "El teléfono solo puede tener números, espacios, guiones y +.";
+  }
+  if (kind === "email" && !EMAIL_RE.test(value)) return "El correo electrónico es inválido.";
+  if (kind === "web" && !URL_RE.test(value)) return "El sitio web debe empezar con https://.";
+  return null;
+}
+
+/** Why the published hours are refused, or null when they are fine. */
+function hoursError(hours: string): string | null {
+  if (PHONE_LIKE_RUN.test(hours)) {
+    return "Los horarios no pueden incluir un número de teléfono. Si querés publicar uno, usá el contacto público.";
+  }
+  if (hours.length > INTAKE_HOURS_MAX) {
+    return `Los horarios no pueden tener más de ${INTAKE_HOURS_MAX} caracteres.`;
+  }
+  return null;
+}
+
 export function validateFoundAnimalIntake(
   input: FoundAnimalIntakeInput,
 ): { ok: true; value: FoundAnimalIntakeSettings } | { ok: false; error: string } {
@@ -158,36 +182,10 @@ export function validateFoundAnimalIntake(
       error: "Para publicar un contacto, elegí el tipo y completá el dato (o dejá los dos vacíos).",
     };
   }
-  if (kind !== null && value !== null) {
-    if (value.length < INTAKE_CONTACT_MIN || value.length > INTAKE_CONTACT_MAX) {
-      return {
-        ok: false,
-        error: `El contacto debe tener entre ${INTAKE_CONTACT_MIN} y ${INTAKE_CONTACT_MAX} caracteres.`,
-      };
-    }
-    if ((kind === "telefono" || kind === "whatsapp") && !PHONE_RE.test(value)) {
-      return { ok: false, error: "El teléfono solo puede tener números, espacios, guiones y +." };
-    }
-    if (kind === "email" && !EMAIL_RE.test(value)) {
-      return { ok: false, error: "El correo electrónico es inválido." };
-    }
-    if (kind === "web" && !URL_RE.test(value)) {
-      return { ok: false, error: "El sitio web debe empezar con https://." };
-    }
-  }
-  if (hours !== null && PHONE_LIKE_RUN.test(hours)) {
-    return {
-      ok: false,
-      error:
-        "Los horarios no pueden incluir un número de teléfono. Si querés publicar uno, usá el contacto público.",
-    };
-  }
-  if (hours !== null && hours.length > INTAKE_HOURS_MAX) {
-    return {
-      ok: false,
-      error: `Los horarios no pueden tener más de ${INTAKE_HOURS_MAX} caracteres.`,
-    };
-  }
+  const error =
+    (kind !== null && value !== null ? contactValueError(kind, value) : null) ??
+    (hours !== null ? hoursError(hours) : null);
+  if (error) return { ok: false, error };
   return {
     ok: true,
     value: {
