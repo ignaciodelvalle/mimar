@@ -24,7 +24,8 @@
 //     `/casos` — so with nothing open, the history of closed cases had no door.
 //   · "DENUNCIAS" IS ONE ROW, the list, as the web's OWNER_NAV names it (PO
 //     2026-07-03); filing a new one is the primary action at the top of that list.
-//   · "REGISTRAR" IS NOT HERE: its door is the end of the home's list.
+//   · "REGISTRAR" AND "RECLAMAR" ARE NOT HERE: their one door is "+ Agregar" on
+//     the home's "Tus mascotas" row (`AddPetAction`).
 //
 // ONE SOURCE. `NAV_SECTIONS` is the only list of destinations in the app — it
 // replaced `TOP_LEVEL_DESTINATIONS` — so a destination added here has exactly
@@ -52,7 +53,6 @@ import {
   Heart,
   Home,
   type LucideIcon,
-  ScanLine,
   User,
 } from "lucide-react-native";
 import { useCallback, useRef, useState } from "react";
@@ -100,12 +100,6 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         route: ROUTES.transferencias,
         caption: "Recibidas, enviadas y pedidos de cuidado",
         icon: ArrowLeftRight,
-      },
-      {
-        label: "Reclamar una mascota",
-        route: ROUTES.reclamar,
-        caption: "Si ya la registraron por chip o tatuaje",
-        icon: ScanLine,
       },
       {
         label: "Tránsito",

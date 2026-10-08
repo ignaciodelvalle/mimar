@@ -16,8 +16,8 @@
 // `dim-interno:docs/reviews/2026-10-home-app/rediseno-home.html`). First what
 // somebody else is waiting on ("Esperan tu respuesta"), then what the person
 // has to do ("Te toca a vos"), then "En curso" folded into one row, then the
-// animals under "Tus mascotas · N", and the screen ENDS at "Registrar otra
-// mascota". There is no footer of destinations in any of the three states any
+// animals under "Tus mascotas · N" — whose row carries, on the right, the one
+// register action of a loaded list ("+ Agregar"). There is no footer of destinations in any of the three states any
 // more: every other door is in the header — the bell, and the ☰
 // (`src/ui/HeaderActions.tsx`) — which never scrolls. Anything that is empty
 // is simply not drawn.
@@ -60,7 +60,7 @@
 import type { MyCasesV1, MyPetsV1 } from "@dim/contract/api";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { apiFailureMessage } from "../../src/api/client";
@@ -70,6 +70,7 @@ import { useGate } from "../../src/auth/useGate";
 import { OpenCasesBlock } from "../../src/cases/OpenCasesBlock";
 import { hasOpenCases } from "../../src/cases/cases-view-model";
 import { useOpenCases } from "../../src/cases/use-open-cases";
+import { AddPetAction } from "../../src/pets/AddPetAction";
 import { BiteDraftBanner } from "../../src/pets/BiteDraftBanner";
 import { MovedToMenuNotice, useHomeMenuNotice } from "../../src/pets/MovedToMenuNotice";
 import { PetRow } from "../../src/pets/PetRow";
@@ -81,12 +82,11 @@ import { PendingIncomingCard } from "../../src/transfers/PendingIncomingCard";
 import type { PendingIncomingRow } from "../../src/transfers/pending-incoming-view-model";
 import { usePendingIncoming } from "../../src/transfers/use-pending-incoming";
 import { EmptyState, ErrorNotice, Loading, StaleNotice } from "../../src/ui/components";
-import { FONTS } from "../../src/ui/fonts";
-import { Eyebrow, PrimaryButton, Screen, pullToRefresh } from "../../src/ui/kit";
+import { Eyebrow, Screen, pullToRefresh } from "../../src/ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../../src/ui/reload-state";
 import { ROUTES, credentialRoute, recordEventRoute } from "../../src/ui/routes";
 import { ListSkeleton } from "../../src/ui/skeleton";
-import { COLORS, SPACE, TYPE } from "../../src/ui/theme";
+import { COLORS, SPACE } from "../../src/ui/theme";
 import { useReconnect } from "../../src/ui/use-reconnect";
 
 type ListState = { phase: "loading" } | ReadyState<MyPetsV1> | { phase: "failed"; message: string };
@@ -381,6 +381,8 @@ function PetListScreen({
             onOpenPendingRoute={onOpenPendingRoute}
             onOpenTransfers={onOpenTransfers}
             petCount={pets.length === 0 ? 0 : Math.max(view.total, pets.length)}
+            onRegister={onRegister}
+            onClaim={onOpenClaim}
             showMenuNotice={showMenuNotice}
             onDismissMenuNotice={onDismissMenuNotice}
           />
@@ -398,9 +400,7 @@ function PetListScreen({
             }}
           />
         }
-        ListFooterComponent={
-          <ListFooter hasPets={pets.length > 0} onRegister={onRegister} loadingMore={loadingMore} />
-        }
+        ListFooterComponent={<ListFooter hasPets={pets.length > 0} loadingMore={loadingMore} />}
         // LOW-END ANDROID TUNING (M3 / R-1, aimed at the J7's 2 GB). A smaller
         // initial window means less work before the first frame; a smaller
         // `windowSize` bounds how much stays mounted while scrolling; cards are
@@ -437,6 +437,8 @@ function ListHeader({
   onOpenPendingRoute,
   onOpenTransfers,
   petCount,
+  onRegister,
+  onClaim,
   showMenuNotice,
   onDismissMenuNotice,
 }: {
@@ -452,6 +454,8 @@ function ListHeader({
   onOpenTransfers: () => void;
   /** 0 on the empty state, where the `EmptyState` speaks instead of an eyebrow. */
   petCount: number;
+  onRegister: () => void;
+  onClaim: () => void;
   showMenuNotice: boolean;
   onDismissMenuNotice: () => void;
 }) {
@@ -482,10 +486,15 @@ function ListHeader({
       )}
       <OpenCasesBlock cases={openCases} onOpenRoute={onOpenCaseRoute} onOpenAll={onOpenCases} />
       {petCount === 0 ? null : (
-        // The same Eyebrow + count shape the casos block heads itself with.
-        <View style={styles.petsHead} accessibilityRole="header">
-          <Eyebrow>Tus mascotas</Eyebrow>
-          <Text style={styles.petsCount}>{petCount}</Text>
+        // The title carries the count ("TUS MASCOTAS · 5"); the register action
+        // sits opposite it. Same flex contract as `LABEL_VALUE_FLEX`: the title
+        // shrinks (and wraps) at large font scales, the action never leaves the
+        // screen.
+        <View style={styles.petsHead}>
+          <View style={styles.petsTitle} accessibilityRole="header">
+            <Eyebrow>{`Tus mascotas · ${petCount}`}</Eyebrow>
+          </View>
+          <AddPetAction onRegister={onRegister} onClaim={onClaim} />
         </View>
       )}
     </View>
@@ -497,9 +506,10 @@ function ListHeader({
  * `FlatList`'s `ListFooterComponent` so it renders once, however many rows are
  * mounted, instead of once per row the way an item inside `data` would.
  *
- * ONE ACTION, AND IT IS THE LAST THING ON THE SCREEN (inicio-app-rediseno):
- * "Registrar otra mascota" is the only action that belongs to this place. The
- * nine destination buttons that used to follow it are the header's ☰ now.
+ * NO REGISTER BUTTON HERE ANY MORE (PO 2026-10-07): "Registrar otra mascota"
+ * moved to the "Tus mascotas · N" row as "+ Agregar" (see `ListHeader`, `AddPetAction`), so the
+ * footer is only the paging spinner. The nine destination buttons that used to
+ * follow it are the header's ☰ now.
  *
  * D5 — the "La lista está incompleta … entrá desde la web" card is GONE. It
  * existed because there was nowhere else to go for the rest of the list;
@@ -507,23 +517,10 @@ function ListHeader({
  * small spinner while the next page is in flight — the only thing left to say
  * about pagination that a growing list does not already say by growing.
  */
-function ListFooter({
-  hasPets,
-  onRegister,
-  loadingMore,
-}: {
-  hasPets: boolean;
-  onRegister: () => void;
-  loadingMore: boolean;
-}) {
+function ListFooter({ hasPets, loadingMore }: { hasPets: boolean; loadingMore: boolean }) {
   return (
     <View style={styles.footerGap}>
-      {hasPets ? (
-        <>
-          {loadingMore ? <Loading label="Cargando más mascotas…" /> : null}
-          <PrimaryButton label="Registrar otra mascota" onPress={onRegister} />
-        </>
-      ) : null}
+      {hasPets && loadingMore ? <Loading label="Cargando más mascotas…" /> : null}
     </View>
   );
 }
@@ -535,6 +532,6 @@ const styles = StyleSheet.create({
   listContent: { padding: SPACE.xl2, gap: SPACE.lg },
   headerGap: { gap: SPACE.lg },
   footerGap: { gap: SPACE.lg },
-  petsHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-  petsCount: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkMuted },
+  petsHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  petsTitle: { flex: 1, flexShrink: 1 },
 });
