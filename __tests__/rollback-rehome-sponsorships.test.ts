@@ -34,6 +34,7 @@ import { queryOrphanedSponsorships } from "@/scripts/check-spine-integrity";
 import { runRollback } from "@/scripts/rollback-rehome-sponsorships";
 import { findOpenSponsorship } from "@/src/modules/adoption/infrastructure/rehome-sponsorship-writer";
 
+import { postgresTlsOption } from "@/db/tls";
 import { withMutationOverride } from "./_helpers/db-overrides";
 
 const ORG_TOKEN = "DIM-RBRS-ORG1";
@@ -45,6 +46,7 @@ const ALL_PET_TOKENS = [PET_LIVE, PET_ORPHAN, PET_PENDING];
 const pgSql = postgres(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL, {
   max: 1,
   connect_timeout: 5,
+  ssl: postgresTlsOption(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL),
 });
 
 let orgId: string;

@@ -54,6 +54,7 @@ import {
   isSupersededByAltSource,
   isWholeProvinceAggregate,
 } from "@/lib/reference/locality-integrity";
+import { postgresTlsOption } from "../db/tls";
 
 export type LocalityRow = {
   province_code: string;
@@ -142,7 +143,7 @@ async function runCheck(): Promise<void> {
   const dbUrl =
     process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:54322/postgres";
 
-  const sql = postgres(dbUrl, { max: 1, connect_timeout: 5 });
+  const sql = postgres(dbUrl, { max: 1, connect_timeout: 5, ssl: postgresTlsOption(dbUrl) });
 
   let rows: LocalityRow[];
   try {

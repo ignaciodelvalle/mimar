@@ -28,6 +28,7 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { UNIT_FIRST_PROVINCE_CODES } from "../lib/place/unit-first-provinces";
 import { DEFAULT_LOCAL_URL, describeTarget, lines, remoteSkipReason } from "./_db-target";
 
@@ -87,7 +88,12 @@ export async function runLegacyGrantCheck(argv: string[] = []): Promise<void> {
     process.exit(2);
   }
 
-  const client = postgres(rawUrl, { max: 1, connect_timeout: 5, onnotice: () => {} });
+  const client = postgres(rawUrl, {
+    max: 1,
+    connect_timeout: 5,
+    onnotice: () => {},
+    ssl: postgresTlsOption(rawUrl),
+  });
   try {
     let grants: LegacyGrant[];
     try {

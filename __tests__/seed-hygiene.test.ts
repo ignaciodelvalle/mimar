@@ -14,6 +14,7 @@
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { postgresTlsOption } from "@/db/tls";
 import {
   NO_ORG_MEMBERSHIP_EMAILS,
   findNotificationHygieneOffenders,
@@ -26,7 +27,11 @@ import { RESERVED_ACCOUNT_EMAILS, ZERO_PET_OWNER_EMAIL } from "../scripts/seed-r
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:54322/postgres";
 
-const sql = postgres(DATABASE_URL, { max: 1, connect_timeout: 5 });
+const sql = postgres(DATABASE_URL, {
+  max: 1,
+  connect_timeout: 5,
+  ssl: postgresTlsOption(DATABASE_URL),
+});
 
 afterAll(async () => {
   await sql.end({ timeout: 1 }).catch(() => {});

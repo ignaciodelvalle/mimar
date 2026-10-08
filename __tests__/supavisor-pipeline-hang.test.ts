@@ -36,6 +36,7 @@ import postgres from "postgres";
 import { describe, expect, it } from "vitest";
 
 import { oltpPoolOptions } from "@/db";
+import { postgresTlsOption } from "@/db/tls";
 
 const URL = process.env.SUPAVISOR_TRANSACTION_URL;
 const TRIALS = 10;
@@ -60,7 +61,11 @@ async function countHangs(
 ): Promise<number> {
   let hangs = 0;
   for (let t = 0; t < TRIALS; t++) {
-    const sql = postgres(URL as string, { ...options, onnotice: () => {} });
+    const sql = postgres(URL as string, {
+      ...options,
+      onnotice: () => {},
+      ssl: postgresTlsOption(URL as string),
+    });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const verdict = await Promise.race([
       work(sql).then(() => "ok" as const),

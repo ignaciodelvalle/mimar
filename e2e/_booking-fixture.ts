@@ -15,6 +15,7 @@
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { resolveCleanupTarget } from "./demo/_db-cleanup";
 
 export const BOOKING_OFFERING_TOKEN = "E2E-SVO-BOOK1-0001";
@@ -24,7 +25,11 @@ export type BookingFixture = { offeringToken: string; slotId: string };
 async function withLocalSql<T>(fn: (sql: postgres.Sql) => Promise<T>): Promise<T | null> {
   const target = resolveCleanupTarget();
   if (target.kind !== "local") return null;
-  const sql = postgres(target.url, { max: 1, onnotice: () => {} });
+  const sql = postgres(target.url, {
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(target.url),
+  });
   try {
     return await fn(sql);
   } finally {

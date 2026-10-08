@@ -504,14 +504,14 @@
       ],
       "enforcer": [
         "vitest.config.ts:124",
-        "__tests__/global-setup.ts:115-126"
+        "__tests__/global-setup.ts:116-127"
       ],
       "enforcementKind": "none",
       "wired": "none",
       "status": "UNENFORCED",
       "clause": "R2",
-      "statusBasis": "vitest.config.ts:124 globalSetup: [\"./__tests__/global-setup.ts\"] is the declaration itself and __tests__/global-setup.ts:115-126 its implementation, not a check on it; an rg for globalSetup across ts/tsx/mjs/yml/json finds no assertion outside the config. setup() calls its own DATABASE_URL forcing 'Belt-and-suspenders … Per-file setup.ts handles workers' (:119-120), so deleting the entry fails nothing deterministically.",
-      "notes": "Followed the previous basis's lead and opened scripts/check-spine-integrity.ts:188-189 (lint:spine, in verify): it does fail on pets with no pet_events row, so eventless debris left by an aborted run surfaces there. That is a downstream, run-dependent consequence of the missing sweep, not a check on the entry, and the VITEST=true and DATABASE_URL limbs stay unfenced — verdict unchanged.",
+      "statusBasis": "vitest.config.ts:124 globalSetup: [\"./__tests__/global-setup.ts\"] is the declaration itself and __tests__/global-setup.ts:116-127 its implementation, not a check on it; an rg for globalSetup across ts/tsx/mjs/yml/json finds no assertion outside the config. setup() calls its own DATABASE_URL forcing 'Belt-and-suspenders … Per-file setup.ts handles workers' (:119-120), so deleting the entry fails nothing deterministically.",
+      "notes": "Followed the previous basis's lead and opened scripts/check-spine-integrity.ts:189-190 (lint:spine, in verify): it does fail on pets with no pet_events row, so eventless debris left by an aborted run surfaces there. That is a downstream, run-dependent consequence of the missing sweep, not a check on the entry, and the VITEST=true and DATABASE_URL limbs stay unfenced — verdict unchanged.",
       "confidence": 0.68,
       "verifiedAt": "d7dbf25f7"
     },
@@ -1256,7 +1256,7 @@
       "status": "PARTIAL",
       "partialShape": "adoption-unfenced",
       "clause": "R7",
-      "statusBasis": "__tests__/seed-reserved-accounts.test.ts:99-113 enforces the single-source half over scripts/e2e/__tests__/app/components/lib/src/db (:39), with non-vacuity at :86-97. The second half is not fenced: :116-148 pins rejectReservedAccounts' BEHAVIOUR on fixtures, and rg shows exactly one caller (scripts/seed-demo-polish.ts:409) — no other seed script is forced to run its recipient list through it.",
+      "statusBasis": "__tests__/seed-reserved-accounts.test.ts:99-113 enforces the single-source half over scripts/e2e/__tests__/app/components/lib/src/db (:39), with non-vacuity at :86-97. The second half is not fenced: :116-148 pins rejectReservedAccounts' BEHAVIOUR on fixtures, and rg shows exactly one caller (scripts/seed-demo-polish.ts:410) — no other seed script is forced to run its recipient list through it.",
       "notes": "The v3 basis cites the same lines and treats ':116-148 pins rejectReservedAccounts' filtering' as closing the rule; a helper's own fixture test proves nothing about the seed scripts that never call it.",
       "confidence": 0.7,
       "verifiedAt": "d7dbf25f7"
@@ -1820,7 +1820,7 @@
         "docs/agents/qa-mutation-contract.md:13-15"
       ],
       "enforcer": [
-        "__tests__/global-setup.ts:73-113",
+        "__tests__/global-setup.ts:74-114",
         "scripts/check-spine-integrity.ts"
       ],
       "enforcementKind": "lint-script",
@@ -1828,7 +1828,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "scripts/check-spine-integrity.ts:1-27,54-59 exits 1 on any pets row lacking a pet_registered event (only seed_tag='perf' exempt) and is wired as lint:spine inside package.json's verify chain (:79); __tests__/global-setup.ts:73-91 deletes the same eventless rows locally and logs them. Neither reads payload.source: residue that IS anchored in the spine, and every non-pets table, is untouched.",
+      "statusBasis": "scripts/check-spine-integrity.ts:1-27,54-59 exits 1 on any pets row lacking a pet_registered event (only seed_tag='perf' exempt) and is wired as lint:spine inside package.json's verify chain (:79); __tests__/global-setup.ts:74-92 deletes the same eventless rows locally and logs them. Neither reads payload.source: residue that IS anchored in the spine, and every non-pets table, is untouched.",
       "notes": "The global-setup sweep enacts the deletion rather than failing (and returns early on a non-local URL, :74); the failing half is lint:spine, whose subject is spine anchoring, not run-id tagging.",
       "confidence": 0.72,
       "verifiedAt": "d7dbf25f7"
@@ -1841,14 +1841,14 @@
         "docs/agents/qa-mutation-contract.md:16-19"
       ],
       "enforcer": [
-        "__tests__/seed-hygiene.test.ts:78-105"
+        "__tests__/seed-hygiene.test.ts:83-110"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "__tests__/seed-hygiene.test.ts:78-100 fails when a RESERVED account acquires pets or org memberships, with a non-vacuity control at :102-125. That is one corner of the curated demo set: nothing detects a QA agent renaming, re-owning or deleting a named demo pet/org fixture that is not a reserved account.",
+      "statusBasis": "__tests__/seed-hygiene.test.ts:83-105 fails when a RESERVED account acquires pets or org memberships, with a non-vacuity control at :102-125. That is one corner of the curated demo set: nothing detects a QA agent renaming, re-owning or deleting a named demo pet/org fixture that is not a reserved account.",
       "notes": "The rule is a process contract for QA agents (docs/agents/qa-mutation-contract.md); the DB guard catches only the assignment-to-reserved-account shape. Basis reached the same subset independently.",
       "confidence": 0.7,
       "verifiedAt": "d7dbf25f7"
@@ -2701,7 +2701,7 @@
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "scripts/check-spine-integrity.ts:227-260 lists every pets row with no pet_registered event and exits 1; there is no grandfather baseline (header :9-14) and partitionOrphans (:96-106) exempts ONLY seed_tag='perf', never a token prefix. lint:spine is in the verify chain (package.json:79); the partition logic is separately pinned by __tests__/check-spine-integrity.test.ts.",
+      "statusBasis": "scripts/check-spine-integrity.ts:228-261 lists every pets row with no pet_registered event and exits 1; there is no grandfather baseline (header :9-14) and partitionOrphans (:96-106) exempts ONLY seed_tag='perf', never a token prefix. lint:spine is in the verify chain (package.json:79); the partition logic is separately pinned by __tests__/check-spine-integrity.test.ts.",
       "notes": "Two stated conditions: the one exemption is pets.seed_tag='perf' (:76, printed on every run), and the fence exits 0 as a SKIP when the DB is unreachable or the host is non-local without --allow-remote (:166,:198) — so a DB-less CI box passes it silently. I weighed the perf exemption as an R5 declared limit and did not cap on it: it is a named non-production fixture class, and the rule's own operative clause (no grandfather baseline) holds exactly.",
       "confidence": 0.7,
       "verifiedAt": "d7dbf25f7"
@@ -2756,7 +2756,7 @@
         "__tests__/rls/coverage.test.ts:1-20,226-317"
       ],
       "enforcer": [
-        "scripts/check-rls-coverage.ts:765",
+        "scripts/check-rls-coverage.ts:766",
         "package.json:36 lint:rls",
         "__tests__/rls/coverage.test.ts:240-331",
         "__tests__/check-rls-coverage.test.ts",
@@ -2767,7 +2767,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "scripts/check-rls-coverage.ts:765,775-785 fails any public table with relrowsecurity=false or zero policies unless keyed in DENY_ALL_ALLOWLIST (:78), reading pg_class/pg_policies live (:147-155); __tests__/rls/coverage.test.ts:233-266 fails an RLS_REQUIRED table without RLS and any public table classified in neither list. Uncovered clause: nothing fails when an owner-scoped table is missing from the cross-tenant e2e probes — no script or test reads e2e/cross-tenant-isolation.spec.ts's table coverage.",
+      "statusBasis": "scripts/check-rls-coverage.ts:766,775-785 fails any public table with relrowsecurity=false or zero policies unless keyed in DENY_ALL_ALLOWLIST (:78), reading pg_class/pg_policies live (:147-155); __tests__/rls/coverage.test.ts:233-266 fails an RLS_REQUIRED table without RLS and any public table classified in neither list. Uncovered clause: nothing fails when an owner-scoped table is missing from the cross-tenant e2e probes — no script or test reads e2e/cross-tenant-isolation.spec.ts's table coverage.",
       "notes": "Previous basis addressed only the classification half, which I agree is doubly enforced; the trailing e2e-probe clause of the rule text has no enforcer. Both live mechanisms skip loudly when DATABASE_URL is remote/unreachable (script :42-51), so the DB half is real only on the local verify run. Since T3-F1 (A02-7) the 'in its migration' half is also fenced statically by CANON-535 (lint:migration-rls): a migration that creates a public table without enabling RLS on it in the same file fails before any database has it. Views (A02-3, T3-F1): coverage.test.ts enumerates pg_class relkind in ('v','m') over public/pii/ref and fails any view without security_invoker (and any materialised view SELECT-able by anon/authenticated), with an empty shrink-only allowlist and a floor naming the two live views (welfare_report_content, welfare_report_reporter_identity).",
       "confidence": 0.6,
       "verifiedAt": "d7dbf25f7"
@@ -2943,7 +2943,7 @@
         "__tests__/check-subject-rights-coverage.test.ts:1-9,74-171"
       ],
       "enforcer": [
-        "scripts/check-subject-rights-coverage.ts:729",
+        "scripts/check-subject-rights-coverage.ts:730",
         "package.json:40 lint:subject-rights",
         "__tests__/check-subject-rights-coverage.test.ts:57,95,272,279"
       ],
@@ -2951,7 +2951,7 @@
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "scripts/check-subject-rights-coverage.ts:248-354 runs all four checks against the live pg_get_functiondef bodies — unclassified table (:256), a table in two lists (:271), forward direction (an IN_* entry the body does not mention), reverse direction (an EXEMPT/KNOWN_GAP entry the body DOES mention, :339-344) — exiting 1 at :404/:460/:489. The ceiling is pinned in __tests__/check-subject-rights-coverage.test.ts:154-170 in BOTH directions (<=17 at :160 and >=17 at :170), so closing a gap cannot be re-spent.",
+      "statusBasis": "scripts/check-subject-rights-coverage.ts:249-355 runs all four checks against the live pg_get_functiondef bodies — unclassified table (:256), a table in two lists (:271), forward direction (an IN_* entry the body does not mention), reverse direction (an EXEMPT/KNOWN_GAP entry the body DOES mention, :339-344) — exiting 1 at :404/:460/:489. The ceiling is pinned in __tests__/check-subject-rights-coverage.test.ts:154-170 in BOTH directions (<=17 at :160 and >=17 at :170), so closing a gap cannot be re-spent.",
       "notes": "Header :19-28 states the limit honestly: it proves MENTION, not predicate correctness. Same skip-on-non-local-DB contract as lint:spine (:77-80). The ceiling lives in the test, so that half rides test:verified rather than verify.",
       "confidence": 0.85,
       "numberKey": "KNOWN_GAP_CEILING",
@@ -3469,16 +3469,16 @@
         "__tests__/check-function-parity.test.ts:1-3,53-71"
       ],
       "enforcer": [
-        "scripts/check-function-parity.ts:123",
+        "scripts/check-function-parity.ts:124",
         "package.json:88 check:function-parity",
-        "scripts/check-ledger-honesty.ts:412",
+        "scripts/check-ledger-honesty.ts:418",
         ".github/workflows/ci.yml:853-881"
       ],
       "enforcementKind": "lint-script",
       "wired": "ci",
       "status": "ENFORCED",
       "clause": "R8",
-      "statusBasis": "scripts/check-function-parity.ts:89-105 builds the authoritative body per function — db/triggers.sql overrides, otherwise the last defining migration — and :148-153 compares each against pg_proc.prosrc, setting exit 1 at :227 (exit 2 at :183 for an unreachable database). .github/workflows/ci.yml:853-881 runs `pnpm check:function-parity` as its own step against the job's local 127.0.0.1:54322 database.",
+      "statusBasis": "scripts/check-function-parity.ts:90-106 builds the authoritative body per function — db/triggers.sql overrides, otherwise the last defining migration — and :148-153 compares each against pg_proc.prosrc, setting exit 1 at :227 (exit 2 at :183 for an unreachable database). .github/workflows/ci.yml:853-881 runs `pnpm check:function-parity` as its own step against the job's local 127.0.0.1:54322 database.",
       "notes": "Deliberately outside pnpm verify (ci.yml:878-879) because verify must run without Docker; package.json:88 is the manual key, the CI step is the wiring that can fail. Its `if:` guard keys on the seed step, not on the parity result.",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
@@ -3500,7 +3500,7 @@
       "status": "PARTIAL",
       "partialShape": "declared-limit",
       "clause": "R5",
-      "statusBasis": "scripts/check-opened-reason-coverage.ts:164 excludes every scripts/seed* file from SCAN_FILES by declaration (:163), and scripts/seed-panorama.ts:2702,2861,2989 plus scripts/seed-demo-scenario.ts:508 assign literal `openedReason: \"...\"` outside opened-reason-prose.ts - rule-1 violations the fence cannot see. Rules 1/2 themselves are real (:76-116) and lint:opened-reason is in verify (package.json:55,79).",
+      "statusBasis": "scripts/check-opened-reason-coverage.ts:164 excludes every scripts/seed* file from SCAN_FILES by declaration (:163), and scripts/seed-panorama.ts:2703,2861,2989 plus scripts/seed-demo-scenario.ts:508 assign literal `openedReason: \"...\"` outside opened-reason-prose.ts - rule-1 violations the fence cannot see. Rules 1/2 themselves are real (:76-116) and lint:opened-reason is in verify (package.json:55,79).",
       "notes": "The v2 basis rested on __tests__/check-opened-reason-coverage.test.ts:22,79; I opened it - every case there feeds synthetic content to scanRule1/scanRule2, so it says nothing about the SCAN_FILES corpus that drops the seeds. __tests__/ and *.test.ts are excluded too (:162), justified as fixtures; production app/lib/src coverage is genuine.",
       "confidence": 0.7,
       "verifiedAt": "d7dbf25f7"
@@ -3523,7 +3523,7 @@
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "scripts/check-rls-coverage.ts:215-218 flags every pg_policies row whose roles array is exactly ['public'] unless allowlisted in PUBLIC_ROLE_ALLOWLIST, and :327-332 flags a storage.objects SELECT/ALL policy admitting a caller role whose qual never contains 'auth.uid()'; both feed the violation list that exits 1 at :502 (messages :483, :488). lint:rls is in verify (package.json:36,79).",
+      "statusBasis": "scripts/check-rls-coverage.ts:216-219 flags every pg_policies row whose roles array is exactly ['public'] unless allowlisted in PUBLIC_ROLE_ALLOWLIST, and :327-332 flags a storage.objects SELECT/ALL policy admitting a caller role whose qual never contains 'auth.uid()'; both feed the violation list that exits 1 at :502 (messages :483, :488). lint:rls is in verify (package.json:36,79).",
       "notes": "Reads the live catalog, not migrations (:28-31). Skips loudly against a remote or unreachable DB (:42-57), so the run that counts is the local verify. I did not need __tests__/check-rls-coverage.test.ts (the basis's citation) — the live script's two predicates decide it.",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
@@ -3625,7 +3625,7 @@
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "scripts/check-spine-integrity.ts:125-160 queries every rehome_sponsorship_started with no rehome_sponsorship_ended carrying the same payload.ownership_id whose custody row is ended or missing, and :262-283 exits 1 on any hit — no baseline, no exemption. __tests__/rehome-sponsorship-drift.test.ts:156-215 plants both orphan shapes against a real DB and proves an ended event for a DIFFERENT ownership_id does not heal one.",
+      "statusBasis": "scripts/check-spine-integrity.ts:126-161 queries every rehome_sponsorship_started with no rehome_sponsorship_ended carrying the same payload.ownership_id whose custody row is ended or missing, and :262-283 exits 1 on any hit — no baseline, no exemption. __tests__/rehome-sponsorship-drift.test.ts:158-217 plants both orphan shapes against a real DB and proves an ended event for a DIFFERENT ownership_id does not heal one.",
       "notes": "The 'same transaction' half is not statically checked; the fence detects the resulting drift after the fact, which is the shape the rule itself names as drift. Same skip-on-unreachable/remote caveat as CANON-166.",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
@@ -4026,7 +4026,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "scripts/check-catalog-drift.ts:60-75 queries pets where breed not in ALL_BREEDS and exits 8 on any hit — subject and predicate match exactly. But :42-51 calls reportSkip and process.exit(0) whenever DATABASE_URL is not a LOCAL host and --allow-remote is absent, so only the local dev database is ever judged; staging/prod values are unfenced (species has CHECK pets_species_valid from 0178, breed has no constraint).",
+      "statusBasis": "scripts/check-catalog-drift.ts:66-81 queries pets where breed not in ALL_BREEDS and exits 8 on any hit — subject and predicate match exactly. But :42-51 calls reportSkip and process.exit(0) whenever DATABASE_URL is not a LOCAL host and --allow-remote is absent, so only the local dev database is ever judged; staging/prod values are unfenced (species has CHECK pets_species_valid from 0178, breed has no constraint).",
       "notes": "The previous basis quotes :1/:17-19/:24 and never opens the remote-skip branch, which is why it read ENFORCED. lint:catalogs is in verify (package.json:39,79).",
       "confidence": 0.6,
       "verifiedAt": "d7dbf25f7"
@@ -4039,7 +4039,7 @@
         "scripts/check-env-schema-drift.ts:21"
       ],
       "enforcer": [
-        "scripts/check-env-schema-drift.ts:164",
+        "scripts/check-env-schema-drift.ts:170",
         "package.json:92 db:drift"
       ],
       "enforcementKind": "lint-script",
@@ -4047,7 +4047,7 @@
       "status": "PARTIAL",
       "partialShape": "manual-wiring",
       "clause": "R8",
-      "statusBasis": "scripts/check-env-schema-drift.ts:45-58 queries pg_constraint (contype c and u) and pg_indexes by name and definition, plus columns (:60+), comparing REFERENCE_DATABASE_URL against DATABASE_URL and exiting 7 on drift (header :36). Wiring is package.json:92 db:drift only; rg finds no verify or workflow caller, and :111 skips outright on a non-local host without --allow-remote.",
+      "statusBasis": "scripts/check-env-schema-drift.ts:46-59 queries pg_constraint (contype c and u) and pg_indexes by name and definition, plus columns (:60+), comparing REFERENCE_DATABASE_URL against DATABASE_URL and exiting 7 on drift (header :36). Wiring is package.json:92 db:drift only; rg finds no verify or workflow caller, and :111 skips outright on a non-local host without --allow-remote.",
       "notes": "Needs two live databases, so it cannot join verify; the skip path at :111 also makes an unattended run a no-op against staging.",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
@@ -4087,7 +4087,7 @@
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R6",
-      "statusBasis": "isUnconditionalRead (scripts/check-scope-authz.ts:246-254) returns true for a PERMISSIVE SELECT/ALL policy held by an untrusted role whose qual is '', 'true' or '(true)'; evaluateCoherence :279-289 turns each such policy on a scope-gated table into an 'unconditional_read_policy' violation unless its `table:policy` key is in UNCONDITIONAL_POLICY_ALLOWLIST, which is `{}` at :132 — the strictest state. Violations exit 1 (:483/:502) with the remedy at :366.",
+      "statusBasis": "isUnconditionalRead (scripts/check-scope-authz.ts:247-255) returns true for a PERMISSIVE SELECT/ALL policy held by an untrusted role whose qual is '', 'true' or '(true)'; evaluateCoherence :279-289 turns each such policy on a scope-gated table into an 'unconditional_read_policy' violation unless its `table:policy` key is in UNCONDITIONAL_POLICY_ALLOWLIST, which is `{}` at :132 — the strictest state. Violations exit 1 (:483/:502) with the remedy at :366.",
       "notes": "Live allowlist size is 0, matching the row's number. Reads pg_policies live, so it judges the database rather than a migration text.",
       "confidence": 0.88,
       "numberKey": "UNCONDITIONAL_POLICY_ALLOWLIST entries",
@@ -4103,14 +4103,14 @@
       "enforcer": [
         "__tests__/seed-hygiene.test.ts:6,14,22,34",
         "scripts/hygiene-rules.ts",
-        "scripts/check-seed-hygiene.ts:62"
+        "scripts/check-seed-hygiene.ts:63"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "scripts/hygiene-rules.ts:26-43 — the scan's corpus is FIVE hand-listed columns (profiles.display_name, welfare_reports.description, pets.name, organizations.display_name, notifications.title) under the header 'Renderable text columns seed scripts are known to touch'. __tests__/seed-hygiene.test.ts:35-49 fails on any hit in those, so every other renderable text column in the live DB is outside the predicate.",
+      "statusBasis": "scripts/hygiene-rules.ts:26-43 — the scan's corpus is FIVE hand-listed columns (profiles.display_name, welfare_reports.description, pets.name, organizations.display_name, notifications.title) under the header 'Renderable text columns seed scripts are known to touch'. __tests__/seed-hygiene.test.ts:40-54 fails on any hit in those, so every other renderable text column in the live DB is outside the predicate.",
       "notes": "Marker patterns are also a closed list of four (hygiene-rules.ts:46-54). Not vacuous — a real hit in a listed column fails the suite. The v3 basis argues wiring only (the vitest twin opens a live postgres connection, which I confirm at :14/:28); wiring was never the gap, the column corpus is.",
       "confidence": 0.65,
       "verifiedAt": "d7dbf25f7"
@@ -4123,14 +4123,14 @@
         "scripts/check-storage-write-policies.ts:25"
       ],
       "enforcer": [
-        "scripts/check-storage-write-policies.ts:503",
+        "scripts/check-storage-write-policies.ts:504",
         "package.json:38 lint:storage-policies"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "scripts/check-storage-write-policies.ts:189-197 pins the two grants by name with their exact predicate text; :470 defines permissive as 'predicate never mentions auth.uid()'; :501-512 fails an unfrozen permissive write grant, a frozen grant whose predicate changed (widening AND narrowing), and a frozen entry the scan no longer finds; exits 1 at :553/:568/:640. Header rule 7 adds a MIN_WRITE_POLICIES non-vacuity floor. lint:storage-policies is in verify.",
+      "statusBasis": "scripts/check-storage-write-policies.ts:190-198 pins the two grants by name with their exact predicate text; :470 defines permissive as 'predicate never mentions auth.uid()'; :501-512 fails an unfrozen permissive write grant, a frozen grant whose predicate changed (widening AND narrowing), and a frozen entry the scan no longer finds; exits 1 at :553/:568/:640. Header rule 7 adds a MIN_WRITE_POLICIES non-vacuity floor. lint:storage-policies is in verify.",
       "notes": "Declared blind spot (:37-43): a bucket with NO policy is invisible, so a later auth.uid()-carrying grant on uploads-staging would not be seen — but a bucket-name-only grant on ANY bucket is caught, which is the rule's second clause. Static scan of db/**/*.sql, not the live catalog. The prior judge pass records the floor's value as MIN_WRITE_POLICIES=8 at :155 with the exit at :557-568; I saw the exit lines but not the constant, and it does not change the verdict.",
       "confidence": 0.85,
       "numberKey": "frozen storage INSERT grants",
@@ -4170,7 +4170,7 @@
       "wired": "none",
       "status": "UNENFORCED",
       "clause": "R2",
-      "statusBasis": "vitest.config.ts:106-111 declares globalSetup for the db project, and __tests__/global-setup.ts:128-133 teardown() is an explicit NO-OP ('pool drain happens automatically via idle_timeout') — so the rule's stated predicate, a globalSetup that gracefully closes the postgres.js pool after the suite, is not implemented, let alone checked. No test reads globalSetup.",
+      "statusBasis": "vitest.config.ts:106-111 declares globalSetup for the db project, and __tests__/global-setup.ts:129-134 teardown() is an explicit NO-OP ('pool drain happens automatically via idle_timeout') — so the rule's stated predicate, a globalSetup that gracefully closes the postgres.js pool after the suite, is not implemented, let alone checked. No test reads globalSetup.",
       "notes": "The config entry is a self-executing declaration and the pool-drain claim in its comment (:106-110) is contradicted by the no-op teardown; the previous basis notes the same open defect while grading ENFORCED.",
       "confidence": 0.76,
       "verifiedAt": "d7dbf25f7"
@@ -5893,7 +5893,7 @@
       "partialShape": "subset",
       "clause": "R4",
       "statusBasis": "__tests__/pet-photo-upload.test.ts:189-350 fences ONE door (lib/infra/pet-photo-upload.ts): whitelist parity, no SVG, magic bytes, sharp re-encode, key from validated MIME + minted uuid. No fence enumerates upload entry points or requires a route to reach lib/infra/uploads.ts (rg 'uploads' over scripts/check-*.ts returns only storage-grant and scheduled-ref scripts), and other doors exist unfenced — app/api/v1/welfare-reports/route.ts evidence uploads, src/modules/events/actions.ts, app/org/[orgToken]/atender/actions.ts.",
-      "notes": "Corroboration only, not an enforcer (P17 trap the basis flagged): scripts/check-storage-write-policies.ts:193 records that closing B24 needs 'moving the ~30 Server-Action upload sites onto the signed upload primitive' and that the caller migration 'has not happened'.",
+      "notes": "Corroboration only, not an enforcer (P17 trap the basis flagged): scripts/check-storage-write-policies.ts:194 records that closing B24 needs 'moving the ~30 Server-Action upload sites onto the signed upload primitive' and that the caller migration 'has not happened'.",
       "confidence": 0.8,
       "verifiedAt": "d7dbf25f7"
     },
@@ -8721,8 +8721,8 @@
       "rule": "No renderable column in the seeded database may carry a seed marker; every reserved account (including the zero-pet owner) must keep 0 pets and 0 org memberships; and seeded notifications must satisfy brand casing and the welcome category from migration 0157 — all asserted with a non-vacuity control.",
       "scope": "db",
       "sources": [
-        "__tests__/seed-hygiene.test.ts:34-105",
-        "__tests__/seed-hygiene.test.ts:52,62,78"
+        "__tests__/seed-hygiene.test.ts:39-110",
+        "__tests__/seed-hygiene.test.ts:57,62,78"
       ],
       "enforcer": [
         "__tests__/seed-hygiene.test.ts",
@@ -8733,7 +8733,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "__tests__/seed-hygiene.test.ts:34-50, :52-68 and :78-100 do carry all three assertions against the live seeded DB, but the non-vacuity control at :102-125 covers ONLY the reserved-account guard; the seed-marker and notification scans have none (no other test imports findSeedHygieneOffenders / findNotificationHygieneOffenders), and the marker half is limited to the five columns in scripts/hygiene-rules.ts:31-42.",
+      "statusBasis": "__tests__/seed-hygiene.test.ts:39-55, :52-68 and :78-100 do carry all three assertions against the live seeded DB, but the non-vacuity control at :102-125 covers ONLY the reserved-account guard; the seed-marker and notification scans have none (no other test imports findSeedHygieneOffenders / findNotificationHygieneOffenders), and the marker half is limited to the five columns in scripts/hygiene-rules.ts:31-42.",
       "notes": "The rule's closing clause ('all asserted with a non-vacuity control') is true of one assertion of three. The v3 basis is a stub carried over from the reclassification pass with no evidence line of its own.",
       "confidence": 0.6,
       "verifiedAt": "d7dbf25f7"
@@ -8942,7 +8942,7 @@
       "rule": "Each recent migration must carry a probe asserting the EFFECT of its SQL as a query returning exactly one boolean column `ok`, so the migration ledger cannot claim an effect the database does not have.",
       "scope": "db",
       "sources": [
-        "scripts/check-ledger-honesty.ts:83-87"
+        "scripts/check-ledger-honesty.ts:84-88"
       ],
       "enforcer": [
         "scripts/check-ledger-honesty.ts",

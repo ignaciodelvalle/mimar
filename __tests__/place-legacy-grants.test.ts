@@ -12,12 +12,19 @@ import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { postgresTlsOption } from "@/db/tls";
 import { UNIT_FIRST_PROVINCE_CODES, unitFirstProvinceCode } from "@/lib/place/unit-first-provinces";
 import { describeLegacyGrants, findLegacyGrants } from "@/scripts/place-legacy-grants";
 
 const client = postgres(
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
-  { max: 1, onnotice: () => {} },
+  {
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(
+      process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    ),
+  },
 );
 afterAll(() => client.end({ timeout: 5 }));
 

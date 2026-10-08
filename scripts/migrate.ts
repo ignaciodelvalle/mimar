@@ -116,6 +116,7 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { describeTarget } from "./_db-target";
 
 loadEnv({ path: ".env.local" });
@@ -406,7 +407,12 @@ async function main(): Promise<void> {
     diskChecksums.set(f, checksum(readFileSync(path.join(MIGRATIONS_DIR, f), "utf8")));
   }
 
-  const sql = postgres(DATABASE_URL, { prepare: false, max: 1, onnotice: () => {} });
+  const sql = postgres(DATABASE_URL, {
+    prepare: false,
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(DATABASE_URL),
+  });
 
   try {
     await ensureTrackingTable(sql);

@@ -53,6 +53,7 @@ import { CaretakersRepository } from "@/src/modules/caretakers/infrastructure/ca
 import { acceptPetTransfer } from "@/src/modules/transfers/application/accept-pet-transfer";
 import { TransfersRepository } from "@/src/modules/transfers/infrastructure/transfers-repository";
 
+import { postgresTlsOption } from "@/db/tls";
 import { withMutationOverride } from "./_helpers/db-overrides";
 import { eraseAs, inRolledBackTx, seedPet, seedUser, rows as txRows } from "./_helpers/erasure-tx";
 
@@ -63,6 +64,7 @@ import { eraseAs, inRolledBackTx, seedPet, seedUser, rows as txRows } from "./_h
 const holder = postgres(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL, {
   max: 2,
   connect_timeout: 5,
+  ssl: postgresTlsOption(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL),
 });
 
 type HolderTx = postgres.TransactionSql;

@@ -19,6 +19,7 @@
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { resolveCleanupTarget } from "./demo/_db-cleanup";
 
 /** The fixture's public token — the agenda URL segment. */
@@ -32,7 +33,11 @@ export async function ensureAgendaOffering(orgToken: string): Promise<string | n
   const target = resolveCleanupTarget();
   if (target.kind !== "local") return null;
 
-  const sql = postgres(target.url, { max: 1, onnotice: () => {} });
+  const sql = postgres(target.url, {
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(target.url),
+  });
   try {
     const [org] = await sql<Array<{ id: string }>>`
       SELECT id::text AS id FROM organizations WHERE public_token = ${orgToken}`;
@@ -62,7 +67,11 @@ export async function removeAgendaOffering(): Promise<void> {
   const target = resolveCleanupTarget();
   if (target.kind !== "local") return;
 
-  const sql = postgres(target.url, { max: 1, onnotice: () => {} });
+  const sql = postgres(target.url, {
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(target.url),
+  });
   try {
     await sql`DELETE FROM service_offerings WHERE public_token = ${AGENDA_OFFERING_TOKEN}`;
   } finally {

@@ -36,6 +36,7 @@ import { validateEventPayload } from "@/lib/events/event-schemas";
 import { DEFAULT_LOCAL_URL } from "@/scripts/_db-target";
 import { queryOrphanedSponsorships } from "@/scripts/check-spine-integrity";
 
+import { postgresTlsOption } from "@/db/tls";
 import { withMutationOverride } from "./_helpers/db-overrides";
 
 const ORG_TOKEN = "DIM-RSDR-ORG1";
@@ -48,6 +49,7 @@ const ALL_PET_TOKENS = [PET_LIVE, PET_ENDED, PET_MISSING, PET_HEALED];
 const pgSql = postgres(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL, {
   max: 1,
   connect_timeout: 5,
+  ssl: postgresTlsOption(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL),
 });
 
 let orgId: string;

@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import postgres from "postgres";
+import { postgresTlsOption } from "../../db/tls";
 
 async function main() {
   const file = process.argv[2];
@@ -28,7 +29,12 @@ async function main() {
   const body = readFileSync(path, "utf8");
   const host = new URL(url).host;
   console.log(`Applying ${file} against ${host} …`);
-  const sql = postgres(url, { prepare: false, max: 1, onnotice: () => {} });
+  const sql = postgres(url, {
+    prepare: false,
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(url),
+  });
   try {
     await sql.unsafe(body);
     console.log("ok");

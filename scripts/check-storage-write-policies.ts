@@ -133,6 +133,7 @@
 
 import { globSync, readFileSync } from "node:fs";
 import postgres from "postgres";
+import { postgresTlsOption } from "../db/tls";
 import {
   DEFAULT_LOCAL_URL,
   type DbTarget,
@@ -917,7 +918,12 @@ async function fetchLivePolicies(
   target: DbTarget,
   allowRemote: boolean,
 ): Promise<LiveStoragePolicy[] | null> {
-  const sql = postgres(rawUrl, { max: 1, connect_timeout: 5, onnotice: () => {} });
+  const sql = postgres(rawUrl, {
+    max: 1,
+    connect_timeout: 5,
+    onnotice: () => {},
+    ssl: postgresTlsOption(rawUrl),
+  });
   let rows: RawPolicyRow[];
   // ONLY THE QUERY IS INSIDE THE TRY, and the narrowing is deliberate. When the
   // row mapping was in here too, a renamed pg_policies column or a null `cmd`

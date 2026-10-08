@@ -69,6 +69,7 @@ import { globSync, readFileSync } from "node:fs";
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import {
   DEFAULT_LOCAL_URL,
   type DbTarget,
@@ -962,7 +963,7 @@ async function fetchCoverage(
   anonReadSurface: AnonReadRow[];
   callerTruncate: CallerTruncateRow[];
 } | null> {
-  const sql = postgres(rawUrl, { max: 1, connect_timeout: 5 });
+  const sql = postgres(rawUrl, { max: 1, connect_timeout: 5, ssl: postgresTlsOption(rawUrl) });
   try {
     return {
       tables: await fetchRlsCoverage(sql),

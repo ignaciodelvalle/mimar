@@ -69,6 +69,7 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import {
   anonReadProvisionShortfalls,
   callerTruncateProvisionShortfalls,
@@ -848,7 +849,12 @@ async function main(): Promise<void> {
       "  WOULD count functions/indexes/triggers/census/extensions/grants, judge the anon read surface after the re-grant, and FAIL if short.",
     );
   } else {
-    const sql = postgres(DB_URL, { prepare: false, max: 1, onnotice: () => {} });
+    const sql = postgres(DB_URL, {
+      prepare: false,
+      max: 1,
+      onnotice: () => {},
+      ssl: postgresTlsOption(DB_URL),
+    });
     try {
       // ---- Step 2 — required extensions (before the replay uses them) ------
       header("Step 2/8 — create required extensions");

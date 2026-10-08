@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { assertNotSplitEnv, describeTarget, isLocalUrl } from "./_env-target";
 
 loadEnv({ path: ".env.local" });
@@ -45,7 +46,12 @@ const supabase = createClient(url, serviceKey, {
 
 async function main() {
   const email = "admin@dim.test";
-  const sql = postgres(databaseUrl, { prepare: false, max: 1, onnotice: () => {} });
+  const sql = postgres(databaseUrl, {
+    prepare: false,
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(databaseUrl),
+  });
   try {
     // Already there? (idempotent)
     const { data: list } = await supabase.auth.admin.listUsers();

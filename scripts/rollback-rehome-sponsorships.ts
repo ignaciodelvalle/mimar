@@ -79,6 +79,7 @@ import {
 } from "@/src/modules/adoption/infrastructure/rehome-sponsorship-writer";
 import { RehomeRepository } from "@/src/modules/rehome/infrastructure/rehome-repository";
 
+import { postgresTlsOption } from "../db/tls";
 import { DEFAULT_LOCAL_URL, describeTarget, isLocalWriterTarget } from "./_db-target";
 import { type OrphanSponsorshipRow, queryOrphanedSponsorships } from "./check-spine-integrity";
 
@@ -410,7 +411,9 @@ export async function runRollback(opts: RollbackOptions): Promise<RollbackReport
 
   // The plan: orphans through lint:spine's own query, the work through the
   // spine + live-row join, the unanswered requests through the cases table.
-  const ownClient = opts.sqlClient ?? postgres(rawUrl, { max: 1, connect_timeout: 5 });
+  const ownClient =
+    opts.sqlClient ??
+    postgres(rawUrl, { max: 1, connect_timeout: 5, ssl: postgresTlsOption(rawUrl) });
   try {
     const tokenSet = opts.petTokens ? new Set(opts.petTokens) : null;
     report.orphans = (await queryOrphanedSponsorships(ownClient)).filter(

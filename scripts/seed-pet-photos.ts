@@ -28,6 +28,7 @@
 // ---------------------------------------------------------------------------
 
 import { config as loadEnv } from "dotenv";
+import { postgresTlsOption } from "../db/tls";
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
 
@@ -114,7 +115,7 @@ async function main(): Promise<void> {
   const supabase = createSdkClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const client = postgres(DATABASE_URL, { prepare: false });
+  const client = postgres(DATABASE_URL, { prepare: false, ssl: postgresTlsOption(DATABASE_URL) });
   const db = drizzle(client, { schema });
 
   log("STEP", `Resolving owner user id for ${OWNER_EMAIL}`);

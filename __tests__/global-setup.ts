@@ -25,6 +25,7 @@
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "@/db/tls";
 import { EXEMPT_SEED_TAGS } from "@/scripts/check-spine-integrity";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -72,7 +73,7 @@ const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
  */
 async function sweepEventlessPets(url: string): Promise<void> {
   if (!url.includes("127.0.0.1") && !url.includes("localhost")) return;
-  const sql = postgres(url, { max: 1, connect_timeout: 5 });
+  const sql = postgres(url, { max: 1, connect_timeout: 5, ssl: postgresTlsOption(url) });
   try {
     const removed = await sql`
       DELETE FROM pets p

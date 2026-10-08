@@ -43,6 +43,7 @@
 // /perdidas weeks later.
 
 import postgres from "postgres";
+import { postgresTlsOption } from "../../db/tls";
 
 /**
  * What database, if any, this run is allowed to clean.
@@ -131,7 +132,7 @@ export async function resetAuthLoginRateLimits(): Promise<void> {
   if (target.kind !== "local") return;
   const url = target.url;
 
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = postgres(url, { max: 1, onnotice: () => {}, ssl: postgresTlsOption(url) });
   try {
     await sql`DELETE FROM rate_limit_buckets
       WHERE bucket_key LIKE ${"auth_login_ip:%"} OR bucket_key LIKE ${"auth_login_email:%"}
@@ -182,7 +183,7 @@ export async function ensureDenunciaJurisdiction(
   if (!referenceCode) return;
   const url = target.url;
 
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = postgres(url, { max: 1, onnotice: () => {}, ssl: postgresTlsOption(url) });
   try {
     // The report itself — what welfareReportsScopeClause fences the two
     // denuncia queues on.
@@ -241,7 +242,7 @@ export async function deleteTagsByLotePrefix(prefix: string): Promise<number> {
   }
   const url = target.url;
 
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = postgres(url, { max: 1, onnotice: () => {}, ssl: postgresTlsOption(url) });
   try {
     const doomed = await sql<Array<{ serial: string }>>`
       SELECT serial FROM pet_tags WHERE lote_id LIKE ${`${prefix}%`}`;
@@ -317,7 +318,7 @@ export async function deletePetsByNamePrefix(prefix: string): Promise<number> {
   }
   const url = target.url;
 
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = postgres(url, { max: 1, onnotice: () => {}, ssl: postgresTlsOption(url) });
   try {
     const actor = await sql<Array<{ id: string }>>`
       SELECT p.id::text AS id FROM profiles p
@@ -409,7 +410,11 @@ export async function setLegalVersionForEmail(
   const target = resolveCleanupTarget();
   if (target.kind === "undeclared") announceUndeclared();
   if (target.kind !== "local") return false;
-  const sql = postgres(target.url, { max: 1, onnotice: () => {} });
+  const sql = postgres(target.url, {
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(target.url),
+  });
   try {
     const rows = await sql`
       UPDATE public.profiles p
@@ -428,7 +433,11 @@ export async function setLegalVersionForEmail(
 export async function legalVersionForEmail(email: string): Promise<string | null> {
   const target = resolveCleanupTarget();
   if (target.kind !== "local") return null;
-  const sql = postgres(target.url, { max: 1, onnotice: () => {} });
+  const sql = postgres(target.url, {
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(target.url),
+  });
   try {
     const rows = await sql<{ tos_version: string | null }[]>`
       SELECT p.tos_version FROM public.profiles p JOIN auth.users u ON u.id = p.id

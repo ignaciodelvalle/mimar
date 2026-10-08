@@ -25,6 +25,7 @@
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { ALL_BREEDS } from "../lib/reference/breeds";
 import { DEFAULT_LOCAL_URL, describeTarget, lines, remoteRemedy, reportSkip } from "./_db-target";
 
@@ -50,7 +51,12 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const sql = postgres(url, { max: 1, connect_timeout: 15, onnotice: () => {} });
+  const sql = postgres(url, {
+    max: 1,
+    connect_timeout: 15,
+    onnotice: () => {},
+    ssl: postgresTlsOption(url),
+  });
   let fallas = 0;
 
   try {

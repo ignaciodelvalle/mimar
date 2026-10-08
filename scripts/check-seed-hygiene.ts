@@ -29,6 +29,7 @@
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { WRONG_CASE_BRAND } from "./check-brand-casing";
 import { RENDERABLE_TEXT_COLUMNS, findSeedMarker } from "./hygiene-rules";
 import { RESERVED_ACCOUNT_EMAILS } from "./seed-reserved-accounts";
@@ -261,7 +262,7 @@ async function runCheck(): Promise<void> {
   const dbUrl =
     process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:54322/postgres";
 
-  const sql = postgres(dbUrl, { max: 1, connect_timeout: 5 });
+  const sql = postgres(dbUrl, { max: 1, connect_timeout: 5, ssl: postgresTlsOption(dbUrl) });
 
   let offenders: SeedHygieneOffender[];
   let notificationOffenders: NotificationHygieneOffender[];

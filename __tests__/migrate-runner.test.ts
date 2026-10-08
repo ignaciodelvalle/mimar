@@ -18,6 +18,7 @@ import path from "node:path";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { postgresTlsOption } from "@/db/tls";
 import {
   checksum,
   computePending,
@@ -237,7 +238,11 @@ function runMigrate(args: string[], migrationsDir: string, extraEnv: Record<stri
 // spawn twice. 30s is comfortable headroom without masking real hangs.
 describe("migrate runner e2e (local DB, scratch dir + table)", { timeout: 30_000 }, () => {
   let dir: string;
-  const sql = postgres(process.env.DATABASE_URL as string, { prepare: false, max: 1 });
+  const sql = postgres(process.env.DATABASE_URL as string, {
+    prepare: false,
+    max: 1,
+    ssl: postgresTlsOption(process.env.DATABASE_URL as string),
+  });
 
   beforeEach(() => {
     dir = mkdtempSync(path.join(tmpdir(), "dim-mig-e2e-"));

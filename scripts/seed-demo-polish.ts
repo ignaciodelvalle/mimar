@@ -41,6 +41,7 @@ import { config as loadEnv } from "dotenv";
 
 import { assertNotSplitEnv } from "./_env-target";
 
+import { postgresTlsOption } from "../db/tls";
 import { rejectReservedAccounts } from "./seed-reserved-accounts";
 
 loadEnv({ path: ".env.local" });
@@ -343,7 +344,7 @@ async function main(): Promise<void> {
   const supabase = createSdkClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const client = postgres(DATABASE_URL, { prepare: false });
+  const client = postgres(DATABASE_URL, { prepare: false, ssl: postgresTlsOption(DATABASE_URL) });
   const db = drizzle(client, { schema });
 
   // Summary counters (Step 9).

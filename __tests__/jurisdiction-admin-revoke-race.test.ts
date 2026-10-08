@@ -42,6 +42,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { db } from "@/db";
+import { postgresTlsOption } from "@/db/tls";
 import { DEFAULT_LOCAL_URL } from "@/scripts/_db-target";
 import { loadAdminAuthority } from "@/src/modules/organizations/application/admin-authority/authority";
 
@@ -52,6 +53,7 @@ const MARK = "JA4 race fixture";
 const revoker = postgres(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL, {
   max: 2,
   connect_timeout: 5,
+  ssl: postgresTlsOption(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL),
 });
 
 const admin = randomUUID();

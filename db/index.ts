@@ -12,6 +12,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { type PostgresJsDatabase, drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { postgresTlsOption } from "./tls";
 
 // DATABASE_URL guard — DEFERRED to first use, not thrown at module load.
 //
@@ -162,11 +163,15 @@ export function oltpPoolOptions(test: boolean) {
   };
 }
 
+// Cast: when DATABASE_URL is unset this pool is never queried (the `db` export
+// is the missing-url proxy), and postgres() constructs lazily either way.
+const OLTP_URL = process.env.DATABASE_URL as string;
+
+// TLS: every client here passes `ssl: postgresTlsOption(url)` — "require" for
+// any non-loopback host, the URL's own sslmode when it states one (db/tls.ts).
 const client =
   globalForDb.__dimPgClient ??
-  // Cast: when DATABASE_URL is unset this pool is never queried (the `db` export
-  // is the missing-url proxy), and postgres() constructs lazily either way.
-  postgres(process.env.DATABASE_URL as string, oltpPoolOptions(isTest));
+  postgres(OLTP_URL, { ...oltpPoolOptions(isTest), ssl: postgresTlsOption(OLTP_URL) });
 
 if (process.env.NODE_ENV === "development") globalForDb.__dimPgClient = client;
 
@@ -276,13 +281,14 @@ export function analyticsPoolOptions(statementTimeoutMs: number) {
 
 // In tests both exports share ONE pool (max 3): the analytics split is a
 // production concern, and a second pool would double connections per test file.
+const ANALYTICS_URL = (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string;
 const analyticsClient = isTest
   ? client
   : (globalForDb.__dimPgAnalyticsClient ??
-    postgres(
-      (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string,
-      analyticsPoolOptions(ANALYTICS_STATEMENT_TIMEOUT_MS),
-    ));
+    postgres(ANALYTICS_URL, {
+      ...analyticsPoolOptions(ANALYTICS_STATEMENT_TIMEOUT_MS),
+      ssl: postgresTlsOption(ANALYTICS_URL),
+    }));
 
 if (process.env.NODE_ENV === "development") globalForDb.__dimPgAnalyticsClient = analyticsClient;
 

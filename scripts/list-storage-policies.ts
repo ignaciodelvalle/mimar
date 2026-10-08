@@ -23,6 +23,7 @@
 // sólo las violaciones, para poder comparar entornos.
 
 import postgres from "postgres";
+import { postgresTlsOption } from "../db/tls";
 
 const LOW_TRUST = new Set(["anon", "authenticated", "public"]);
 
@@ -68,7 +69,12 @@ async function main() {
     url.match(/postgres\.([a-z0-9]+)[.:]/)?.[1] ?? url.match(/db\.([a-z0-9]+)\.supabase\.co/)?.[1];
   console.log(`\n  Base: ${url.match(/@([^:/]+)/)?.[1] ?? "?"}${ref ? `  ref=${ref}` : ""}\n`);
 
-  const sql = postgres(url, { max: 1, connect_timeout: 10, onnotice: () => {} });
+  const sql = postgres(url, {
+    max: 1,
+    connect_timeout: 10,
+    onnotice: () => {},
+    ssl: postgresTlsOption(url),
+  });
   try {
     const rows = (await sql`
       select policyname::text, cmd::text, roles::text[] as roles, qual, with_check

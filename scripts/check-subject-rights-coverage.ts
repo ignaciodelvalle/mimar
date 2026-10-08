@@ -139,6 +139,7 @@ import {
   ruleSignature,
 } from "@/lib/events/payload-privacy";
 
+import { postgresTlsOption } from "../db/tls";
 import {
   DEFAULT_LOCAL_URL,
   type DbTarget,
@@ -979,7 +980,7 @@ async function fetchCatalog(
   eraseDef: string;
   redaction: RulesCatalog;
 } | null> {
-  const sql = postgres(rawUrl, { max: 1, connect_timeout: 5 });
+  const sql = postgres(rawUrl, { max: 1, connect_timeout: 5, ssl: postgresTlsOption(rawUrl) });
   try {
     const tableRows = (await sql`
       SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename

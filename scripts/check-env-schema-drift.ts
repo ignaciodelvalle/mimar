@@ -38,6 +38,7 @@
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { DEFAULT_LOCAL_URL, describeTarget, lines, remoteRemedy } from "./_db-target";
 
 type Row = { clave: string; definicion: string };
@@ -72,7 +73,12 @@ const COLUMNS_SQL = `
 `;
 
 async function fingerprint(url: string): Promise<Map<string, string>> {
-  const sql = postgres(url, { max: 1, connect_timeout: 15, onnotice: () => {} });
+  const sql = postgres(url, {
+    max: 1,
+    connect_timeout: 15,
+    onnotice: () => {},
+    ssl: postgresTlsOption(url),
+  });
   try {
     const out = new Map<string, string>();
     for (const query of [CONSTRAINTS_SQL, INDEXES_SQL, COLUMNS_SQL]) {

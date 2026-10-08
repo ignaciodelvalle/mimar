@@ -50,6 +50,7 @@
 // trabajo es informar, no fallar un gate.
 
 import postgres from "postgres";
+import { postgresTlsOption } from "../db/tls";
 
 const NETWORK_EXTENSIONS = ["pg_net", "http", "dblink", "pgjwt"];
 const LOW_TRUST = ["anon", "authenticated", "public"];
@@ -73,7 +74,12 @@ async function main() {
   const host = url.match(/@([^:/]+)/)?.[1] ?? "(desconocido)";
   console.log(`\n  Base: ${host}${ref ? `  ref=${ref}` : ""}\n`);
 
-  const sql = postgres(url, { max: 1, connect_timeout: 10, onnotice: () => {} });
+  const sql = postgres(url, {
+    max: 1,
+    connect_timeout: 10,
+    onnotice: () => {},
+    ssl: postgresTlsOption(url),
+  });
 
   try {
     const exts = (await sql`

@@ -23,6 +23,7 @@
 // ---------------------------------------------------------------------------
 
 import { config as loadEnv } from "dotenv";
+import { postgresTlsOption } from "../db/tls";
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
 
@@ -79,7 +80,11 @@ async function main(): Promise<void> {
   }
   log("STEP", `Found ${files.length} image file(s) in ${PHOTOS_DIR}.`);
 
-  const sql = postgres(DATABASE_URL, { max: 1, onnotice: () => {} });
+  const sql = postgres(DATABASE_URL, {
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(DATABASE_URL),
+  });
   const db = drizzle(sql, { schema });
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },

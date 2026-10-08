@@ -89,6 +89,7 @@ import { WELFARE_DESCRIPTION_TEMPLATES } from "./welfare-description-templates";
 // ---------------------------------------------------------------------------
 
 import { config as loadEnv } from "dotenv";
+import { postgresTlsOption } from "../db/tls";
 
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
@@ -5490,7 +5491,11 @@ async function main(): Promise<void> {
   log("STEP", "Running seed-hygiene gate…");
   const { findSeedHygieneOffenders } = await import("./check-seed-hygiene");
   const postgres = (await import("postgres")).default;
-  const hygieneClient = postgres(DATABASE_URL, { max: 1, connect_timeout: 5 });
+  const hygieneClient = postgres(DATABASE_URL, {
+    max: 1,
+    connect_timeout: 5,
+    ssl: postgresTlsOption(DATABASE_URL),
+  });
   const offenders = await findSeedHygieneOffenders(hygieneClient);
   await hygieneClient.end({ timeout: 1 }).catch(() => {});
   if (offenders.length > 0) {

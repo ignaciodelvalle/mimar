@@ -33,6 +33,7 @@
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import { ALL_BREEDS, resolveBreedLabel } from "../lib/reference/breeds";
 import { DEFAULT_LOCAL_URL, describeTarget, lines, remoteRemedy } from "./_db-target";
 
@@ -84,7 +85,12 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const sql = postgres(url, { max: 1, connect_timeout: 15, onnotice: () => {} });
+  const sql = postgres(url, {
+    max: 1,
+    connect_timeout: 15,
+    onnotice: () => {},
+    ssl: postgresTlsOption(url),
+  });
   try {
     const rows = (await sql`
       select breed, count(*)::int as n

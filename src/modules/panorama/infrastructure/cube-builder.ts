@@ -58,6 +58,7 @@ import {
   KPI_CUBE_SCOPE_NATIONAL,
 } from "@/src/modules/panorama/application/load-panorama-kpis-cube";
 
+import { postgresTlsOption } from "@/db/tls";
 import type {
   ChoroplethCell,
   ProvinceChoroplethCell,
@@ -164,7 +165,10 @@ export function cubeBuilderStatementTimeoutMs(
  * never at module load. */
 function createBuilderReadClient(): ReturnType<typeof postgres> {
   const readUrl = (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string;
-  return postgres(readUrl, builderReadClientOptions(cubeBuilderStatementTimeoutMs()));
+  return postgres(readUrl, {
+    ...builderReadClientOptions(cubeBuilderStatementTimeoutMs()),
+    ssl: postgresTlsOption(readUrl),
+  });
 }
 
 /** Options for the read client. Pure; exported so a test can pin them. */
@@ -239,6 +243,7 @@ function createStampClient(): ReturnType<typeof postgres> {
     idle_timeout: 1,
     connection: { options: statementTimeoutOptions(10_000), application_name: "cube-builder" },
     onnotice: () => {},
+    ssl: postgresTlsOption(url),
   });
 }
 
@@ -614,10 +619,10 @@ export async function refreshCube(opts: RefreshCubeOptions = {}): Promise<CubeBu
 
   // Dedicated write client: session pooler (honors the GUC), generous timeout.
   const writeUrl = (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string;
-  const writeClient = postgres(
-    writeUrl,
-    builderWriteClientOptions(cubeBuilderStatementTimeoutMs()),
-  );
+  const writeClient = postgres(writeUrl, {
+    ...builderWriteClientOptions(cubeBuilderStatementTimeoutMs()),
+    ssl: postgresTlsOption(writeUrl),
+  });
   const writeDb = drizzle(writeClient, { schema });
   const unbindAbort = endClientsOnAbort(signal, [readClient, writeClient]);
 

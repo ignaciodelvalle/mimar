@@ -27,6 +27,7 @@ import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { db } from "@/db";
+import { postgresTlsOption } from "@/db/tls";
 
 const NO_PIPELINING = { max_pipeline: 0 } as unknown as postgres.Options<
   Record<string, postgres.PostgresType>
@@ -39,6 +40,7 @@ function client(max: number): postgres.Sql {
     max,
     prepare: false,
     onnotice: () => {},
+    ssl: postgresTlsOption(process.env.DATABASE_URL as string),
   });
   clients.push(c);
   return c;

@@ -66,6 +66,7 @@ import { respondToRehomeRequest } from "@/src/modules/rehome/application/respond
 import { withdrawRehomeSponsorship } from "@/src/modules/rehome/application/withdraw-rehome-sponsorship";
 import { RehomeRepository } from "@/src/modules/rehome/infrastructure/rehome-repository";
 
+import { postgresTlsOption } from "@/db/tls";
 import { withMutationOverride } from "./_helpers/db-overrides";
 import { createFreshTestUser } from "./_helpers/fresh-test-user";
 
@@ -114,6 +115,7 @@ let sol: Planted;
 const pgSql = postgres(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL, {
   max: 1,
   connect_timeout: 5,
+  ssl: postgresTlsOption(process.env.DATABASE_URL ?? DEFAULT_LOCAL_URL),
 });
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];

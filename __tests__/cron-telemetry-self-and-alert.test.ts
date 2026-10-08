@@ -15,6 +15,7 @@
 // dialect and honours an excluded id — so the test observes what the query
 // asks for, not a string in the source.
 
+import { postgresTlsOption } from "@/db/tls";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -403,7 +404,11 @@ describe("closeAbandonedCronRuns against Postgres", () => {
   // four cases with started_at computed BY THE DATABASE (no host clock).
   it("closes only this cron's running rows older than the threshold", async () => {
     const postgres = (await import("postgres")).default;
-    const sql = postgres(process.env.DATABASE_URL as string, { max: 1, prepare: false });
+    const sql = postgres(process.env.DATABASE_URL as string, {
+      max: 1,
+      prepare: false,
+      ssl: postgresTlsOption(process.env.DATABASE_URL as string),
+    });
     const other = `zz_sweep_other_${Date.now()}`;
     const ids: string[] = [];
     try {
@@ -456,6 +461,7 @@ describe("cube-builder abort plumbing", () => {
       max: 1,
       prepare: false,
       onnotice: () => {},
+      ssl: postgresTlsOption(process.env.DATABASE_URL as string),
     });
     const controller = new AbortController();
     const unbind = endClientsOnAbort(controller.signal, [client]);

@@ -77,6 +77,7 @@ import { readFileSync } from "node:fs";
 
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import {
   DEFAULT_LOCAL_URL,
   type DbTarget,
@@ -426,7 +427,7 @@ export async function runCheck(argv: string[] = []): Promise<void> {
     return;
   }
 
-  const sql = postgres(rawUrl, { max: 1, connect_timeout: 5 });
+  const sql = postgres(rawUrl, { max: 1, connect_timeout: 5, ssl: postgresTlsOption(rawUrl) });
   let tables: TableRlsRow[];
   let policies: PolicyRow[];
   try {

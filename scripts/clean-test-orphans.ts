@@ -34,6 +34,7 @@
 //       pnpm tsx scripts/clean-test-orphans.ts --apply    (deletes)
 
 import postgres from "postgres";
+import { postgresTlsOption } from "../db/tls";
 
 const DEFAULT_LOCAL_URL = "postgresql://postgres:postgres@localhost:54322/postgres";
 
@@ -183,7 +184,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = postgres(url, { max: 1, onnotice: () => {}, ssl: postgresTlsOption(url) });
   try {
     const nameLikes = TEST_PET_PREFIXES.byName.map((p) => `${p}%`);
     const tokenLikes = TEST_PET_PREFIXES.byToken.map((p) => `${p}%`);

@@ -63,6 +63,7 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import postgres from "postgres";
 
+import { postgresTlsOption } from "../db/tls";
 import {
   DEFAULT_LOCAL_URL,
   type DbTarget,
@@ -398,7 +399,12 @@ export async function runDoctor(argv: string[] = []): Promise<void> {
     );
   }
 
-  const client = postgres(rawUrl, { max: 1, connect_timeout: 5, onnotice: () => {} });
+  const client = postgres(rawUrl, {
+    max: 1,
+    connect_timeout: 5,
+    onnotice: () => {},
+    ssl: postgresTlsOption(rawUrl),
+  });
 
   try {
     const sections: Section[] = [];

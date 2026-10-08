@@ -26,6 +26,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { db, profiles } from "@/db";
+import { postgresTlsOption } from "@/db/tls";
 import {
   type SchedulingWorld,
   buildSchedulingWorld,
@@ -108,7 +109,13 @@ describe("service_offerings — institutional sessions require aal2 (0290)", () 
 // ---------------------------------------------------------------------------
 const client = postgres(
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
-  { max: 1, onnotice: () => {} },
+  {
+    max: 1,
+    onnotice: () => {},
+    ssl: postgresTlsOption(
+      process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    ),
+  },
 );
 afterAll(() => client.end({ timeout: 5 }));
 
