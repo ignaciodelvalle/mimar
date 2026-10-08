@@ -2759,7 +2759,7 @@ describe("fetchAnalyticsMetrics — rabiesVaccinationRate excludes deceased pets
       .where(
         and(
           eq(petEvents.eventType, "vaccination_administered"),
-          sql`unaccent(lower(${amendedPayloadText("vaccine_name")})) ~ 'antirrab|rabi'`,
+          sql`lower(unaccent(${amendedPayloadText("vaccine_name")})) ~ 'antirrab|rabi'`,
           sql`${pets.status} IN ('active', 'lost')`,
         ),
       );

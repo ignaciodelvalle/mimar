@@ -330,7 +330,7 @@ describe.skipIf(!HAS_DEMO_SEED)(
       FROM pet_events pe
       JOIN pets p ON p.id = pe.pet_id
       WHERE pe.event_type = 'vaccination_administered'
-        AND unaccent(lower(pe.payload->>'vaccine_name')) ~ 'antirrab|rabi'
+        AND lower(unaccent(pe.payload->>'vaccine_name')) ~ 'antirrab|rabi'
         AND p.species = 'dog'
         AND p.jurisdiction_province = 'CABA'
     `)) as unknown as Array<{ vacc: number }>;

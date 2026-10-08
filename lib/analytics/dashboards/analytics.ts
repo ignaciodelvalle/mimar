@@ -177,7 +177,7 @@ export async function fetchAnalyticsMetrics(
 
   // 3. rabiesVaccinationRate: distinct petIds with ≥1 vaccination_administered where
   //    vaccine_name accent-insensitively matches rabia/rabies/antirrábica/antirrabica.
-  //    rabiesVaccineNameSql folds with unaccent(lower()) and matches 'antirrab|rabi':
+  //    rabiesVaccineNameSql folds with lower(unaccent()) and matches 'antirrab|rabi':
   //      - "rabia"           → unaccent → "rabia"       → contains "rabi" ✓
   //      - "rabies"          → unaccent → "rabies"      → contains "rabi" ✓
   //      - "antirrábica"     → unaccent → "antirrabica" → contains "rabi" ✓

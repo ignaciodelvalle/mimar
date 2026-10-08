@@ -29,8 +29,9 @@ import { RABIES_FAMILY_PATTERN } from "@/lib/reference/lookups";
  * `isRabiesVaccineName` (lib/reference/lookups.ts), and the single SQL
  * definition every rabies metric goes through.
  *
- * It folds the name exactly as the TypeScript side does (`unaccent(lower())`
- * here, `vaccineNameKey` there — unaccent also drops a decomposed accent) and
+ * It folds the name exactly as the TypeScript side does (`lower(unaccent())`
+ * here, `vaccineNameKey` there — unaccent also drops a decomposed accent;
+ * unaccent runs FIRST so "Á" never depends on the collation's lower()) and
  * applies the SAME pattern source, `RABIES_FAMILY_PATTERN`. Until 2026-10-07
  * this was `~* '(antirr[áa]bica|rabies)'`, which missed "Rabia" and a
  * decomposed "á" that the owner's credential read as rabies, so a dose could
@@ -39,7 +40,7 @@ import { RABIES_FAMILY_PATTERN } from "@/lib/reference/lookups";
  * __tests__/rabies-name-sql-parity.test.ts.
  */
 export function rabiesVaccineNameSql(name: SQL): SQL {
-  return sql`(unaccent(lower(${name})) ~ ${RABIES_FAMILY_PATTERN})`;
+  return sql`(lower(unaccent(${name})) ~ ${RABIES_FAMILY_PATTERN})`;
 }
 
 /**
