@@ -16,12 +16,14 @@ jest.mock("expo-linking", () => ({ openURL: (url: string) => mockOpenURL(url) })
 
 import {
   Alert,
+  Card,
   ContactRow,
   EmptyState,
   ErrorNotice,
   LABEL_VALUE_FLEX,
   Row,
   StaleNotice,
+  upperExceptBrand,
 } from "./components";
 import { RIPPLE } from "./kit";
 import { COLORS } from "./theme";
@@ -267,5 +269,21 @@ describe("EmptyState — the compact variant is one grey line", () => {
     expect(screen.getByText("Buscá un turno para tu mascota.")).toBeOnTheScreen();
     fireEvent.press(screen.getByRole("button", { name: "Buscar un turno" }));
     expect(onAction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a card title keeps the brand's casing (QA v14 P3)", () => {
+  it("'Acerca de miMAR' reads 'ACERCA DE miMAR', never 'ACERCA DE MIMAR'", () => {
+    expect(upperExceptBrand("Acerca de miMAR")).toBe("ACERCA DE miMAR");
+    render(<Card title="Acerca de miMAR">{null}</Card>);
+    const title = screen.getByText("ACERCA DE miMAR");
+    expect(StyleSheet.flatten(title.props.style).textTransform).toBe("none");
+  });
+
+  it("a title without the brand keeps its text and the capitals style", () => {
+    render(<Card title="Propuestas">{null}</Card>);
+    expect(StyleSheet.flatten(screen.getByText("Propuestas").props.style).textTransform).toBe(
+      "uppercase",
+    );
   });
 });

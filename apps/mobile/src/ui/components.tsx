@@ -37,12 +37,31 @@ import { COLORS, LABEL_TRACKING_EM, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE }
  * and a mono uppercase title.
  */
 export function Card({ children, title }: { children: ReactNode; title?: string }) {
+  // THE BRAND KEEPS ITS CASING (QA v14 P3). The card title is set in capitals
+  // by `textTransform`, which turned "Acerca de miMAR" into "ACERCA DE MIMAR".
+  // A title carrying the brand is capitalised here instead, around it.
+  const keepsBrand = title?.includes(BRAND) === true;
   return (
     <View style={styles.card}>
-      {title === undefined ? null : <Text style={styles.cardTitle}>{title}</Text>}
+      {title === undefined ? null : (
+        <Text style={keepsBrand ? [styles.cardTitle, styles.cardTitleAsWritten] : styles.cardTitle}>
+          {keepsBrand ? upperExceptBrand(title) : title}
+        </Text>
+      )}
       {children}
     </View>
   );
+}
+
+/** The brand, exactly as it is written everywhere (fenced by lint:brand). */
+const BRAND = "miMAR";
+
+/** A label in capitals, except the brand, which stays "miMAR". */
+export function upperExceptBrand(text: string): string {
+  return text
+    .split(BRAND)
+    .map((part) => part.toLocaleUpperCase("es-AR"))
+    .join(BRAND);
 }
 
 /**
@@ -377,6 +396,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: COLORS.inkMuted,
   },
+  cardTitleAsWritten: { textTransform: "none" },
   row: { flexDirection: "row", justifyContent: "space-between", gap: SPACE.md },
   rowLabel: {
     ...LABEL_VALUE_FLEX.label,
