@@ -33,7 +33,7 @@ import {
   teardownFoundAnimalFixtures,
 } from "../_helpers/found-animal-fixtures";
 
-const fx: FoundAnimalFixtures = newFoundAnimalFixtures();
+const fx: FoundAnimalFixtures = newFoundAnimalFixtures("P4RLS");
 
 const ids = {
   admin: "",
@@ -276,6 +276,21 @@ describe("org_found_animal_intake — every change is audited", () => {
     const [latest] = await auditRows(ids.org);
     expect(latest.actor).toBe(ids.member);
     expect(latest.payload).toMatchObject({ after_values: { capacity_status: "sin_lugar" } });
+  });
+
+  it("records THAT the published contact changed, never the value itself", async () => {
+    await setIntake(ids.org, ids.admin, {
+      capacityStatus: "sin_lugar",
+      publicContactKind: "telefono",
+      publicContactValue: "+54 11 4777-0199",
+    });
+    expect((await readRow(ids.org))?.publicContactValue).toBe("+54 11 4777-0199");
+    const [latest] = await auditRows(ids.org);
+    expect(latest.payload).toMatchObject({
+      public_contact_value_changed: true,
+      after_values: { public_contact_kind: "telefono", public_contact_published: true },
+    });
+    expect(JSON.stringify(latest.payload)).not.toContain("4777-0199");
   });
 
   it("a write with no accountable actor is refused", async () => {
