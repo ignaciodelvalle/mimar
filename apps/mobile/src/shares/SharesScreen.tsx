@@ -38,6 +38,11 @@
 //     the person chooses the recipient. `Share` is React Native's own, so this
 //     costs no dependency.
 //
+// THE PUBLIC CREDENTIAL TRAVELS THE SAME WAY, AND FIRST. "Enviar la credencial
+// pública" hands `/p/{token}` — the url the QR already encodes — to the same OS
+// sheet. It is the one thing on this screen that exposes nothing new (the QR is
+// printed on the animal's tag), so it leads, above the two mechanisms that do.
+//
 // NO CLIPBOARD BUTTON, and that is a decision rather than an omission. Copying
 // would need `expo-clipboard` (a dependency, for one button) and would put a
 // live medical credential on the system clipboard, where every other app can
@@ -54,12 +59,13 @@ import type { ShareCommandInput, Tier2Window } from "@dim/contract/input";
 import { apiFailureMessage } from "../api/client";
 import { fetchPetShares, sendShareCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
-import { API_BASE_URL } from "../config/api";
+import { API_BASE_URL, publicCredentialPageUrl } from "../config/api";
 import { Body, Card, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import {
   Callout,
-  Eyebrow,
+  Choice,
+  ListRow,
   PrimaryButton,
   Screen,
   SecondaryButton,
@@ -78,6 +84,8 @@ import {
   buildRevokeShare,
   buildRevokeTier2,
   createBlockedReason,
+  credentialShareMessage,
+  durationChoiceKey,
   libretaShareUrl,
   shareExpiryLabel,
   shareRevokeBlockedReason,
@@ -134,6 +142,9 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
   const [busy, setBusy] = useState(false);
   const [label, setLabel] = useState("");
   const [days, setDays] = useState<number | null>(30);
+  // Nothing is sent until "Mostrar la libreta" is pressed; the recommended
+  // window is the starting point, as the web's sheet starts on it.
+  const [tier2Window, setTier2Window] = useState<Tier2Window>("24h");
 
   // Pull-to-refresh (QOL 2026-09-01): the shared Screen carried the prop all
   // along and /mascotas + notificaciones already used it — these lists were
@@ -208,6 +219,24 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
     }
   }, []);
 
+  /**
+   * Hand the PUBLIC credential's url to the OS share sheet — the same url the
+   * QR encodes. Not a secret (it is printed on the tag), but it still leaves
+   * only through the sheet, where the person picks who gets it.
+   */
+  const shareCredential = useCallback(
+    async (petName: string) => {
+      try {
+        await Share.share({
+          message: credentialShareMessage(petName, publicCredentialPageUrl(publicToken)),
+        });
+      } catch {
+        // Dismissed, or no share target. Nothing to say and nothing to log.
+      }
+    },
+    [publicToken],
+  );
+
   const refresher = (
     <RefreshControl
       colors={[COLORS.accent]}
@@ -239,6 +268,7 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
   const view = state.view;
   const createBlocked = createBlockedReason(view);
   const tier2Blocked = tier2BlockedReason(view);
+  const selectedTier2 = TIER2_WINDOW_CHOICES.find((choice) => choice.window === tier2Window);
 
   return (
     // `keyboardAvoiding` because the create form has a text input near the
@@ -247,6 +277,13 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
     <Screen keyboardAvoiding refreshControl={refresher}>
       <Title>Compartir</Title>
       <Body>{view.petName}</Body>
+
+      <ListRow
+        label="Enviar la credencial pública"
+        caption="El link del QR: identidad y contacto, sin la libreta."
+        accessibilityHint="Abre el menú para compartir del teléfono"
+        onPress={() => void shareCredential(view.petName)}
+      />
 
       {state.staleFailure === null ? null : (
         <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
@@ -269,24 +306,38 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
           </Callout>
         ) : (
           <View style={styles.stack}>
-            {TIER2_WINDOW_CHOICES.map((choice) => (
-              <View key={choice.window} style={styles.choice}>
-                {choice.advanced && <Eyebrow>Avanzado</Eyebrow>}
-                <SecondaryButton
-                  label={choice.label}
-                  disabled={busy}
-                  onPress={() => {
-                    const built = buildEnableTier2(choice.window as Tier2Window);
-                    if (!built.ok) {
-                      setNotice({ tone: "err", message: built.message });
-                      return;
-                    }
-                    void run(built.input);
-                  }}
-                />
-                <Text style={styles.detail}>{choice.detail}</Text>
-              </View>
-            ))}
+            <Choice
+              label="¿Por cuánto tiempo?"
+              options={TIER2_WINDOW_CHOICES.map((choice) => choice.window)}
+              selected={tier2Window}
+              optionLabel={(window) =>
+                TIER2_WINDOW_CHOICES.find((choice) => choice.window === window)?.label ?? window
+              }
+              onSelect={setTier2Window}
+              disabled={busy}
+            />
+            {/* THE RISK TRAVELS IN THE COPY (see TIER2_WINDOW_CHOICES): the
+                permanent window is marked "Avanzado" where the web hides it
+                behind an expander, and its detail says what it costs. */}
+            {selectedTier2 === undefined ? null : (
+              <Text style={styles.detail}>
+                {selectedTier2.advanced
+                  ? `Avanzado · ${selectedTier2.detail}`
+                  : selectedTier2.detail}
+              </Text>
+            )}
+            <SecondaryButton
+              label="Mostrar la libreta"
+              disabled={busy}
+              onPress={() => {
+                const built = buildEnableTier2(tier2Window);
+                if (!built.ok) {
+                  setNotice({ tone: "err", message: built.message });
+                  return;
+                }
+                void run(built.input);
+              }}
+            />
             {view.capabilities.canRevokeTier2 && (
               <SecondaryButton
                 label="Dejar de mostrar"
@@ -355,14 +406,22 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
               // third would have been the same mistake with a new author.
               maxLength={LIBRETA_SHARE_LABEL_MAX}
             />
-            {SHARE_DURATION_CHOICES.map((choice) => (
-              <SecondaryButton
-                key={String(choice.days)}
-                label={choice.days === days ? `${choice.label} — elegido` : choice.label}
-                disabled={busy}
-                onPress={() => setDays(choice.days)}
-              />
-            ))}
+            <Choice
+              label="Vence en"
+              options={SHARE_DURATION_CHOICES.map((choice) => durationChoiceKey(choice.days))}
+              selected={durationChoiceKey(days)}
+              optionLabel={(key) =>
+                SHARE_DURATION_CHOICES.find((choice) => durationChoiceKey(choice.days) === key)
+                  ?.label ?? key
+              }
+              onSelect={(key) => {
+                const choice = SHARE_DURATION_CHOICES.find(
+                  (c) => durationChoiceKey(c.days) === key,
+                );
+                if (choice !== undefined) setDays(choice.days);
+              }}
+              disabled={busy}
+            />
             <PrimaryButton
               label="Crear link"
               disabled={busy}
@@ -394,7 +453,6 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
 
 const styles = StyleSheet.create({
   stack: { gap: SPACE.sm },
-  choice: { gap: SPACE.xs },
   row: {
     gap: SPACE.xs,
     paddingVertical: SPACE.sm,
