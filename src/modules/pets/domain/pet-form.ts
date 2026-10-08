@@ -118,8 +118,11 @@ export function statedAgeErrorFromFormData(formData: FormData, species: string):
   return code === null ? null : statedAgeMessage(code, species);
 }
 
-/** es-AR copy per age code. Exhaustive: a new code is a compile error here. */
-function statedAgeMessage(code: StatedAgeCode, species: string): string {
+/**
+ * es-AR copy per age code — the alta's and the edit's. Exhaustive: a new code
+ * is a compile error here.
+ */
+export function statedAgeMessage(code: StatedAgeCode, species: string): string {
   switch (code) {
     case "AGE_YEARS_INVALID":
       return "Poné los años como un número entero, por ejemplo 3.";
