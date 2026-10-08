@@ -46,9 +46,20 @@ import { apiFailureMessage } from "../api/client";
 import { fetchMyTransfers, sendTransferCommand } from "../api/endpoints";
 import { KEEP_DESTINATION_ON_SIGN_OUT } from "../auth/return-to";
 import { sessionPort, signOut } from "../auth/session-store";
-import { Body, Card, Loading, Row } from "../ui/components";
-import { Callout, PrimaryButton, Screen, SecondaryButton, TextField, Title } from "../ui/kit";
-import { SPACE } from "../ui/theme";
+import { Body, Row } from "../ui/components";
+import {
+  Callout,
+  Eyebrow,
+  ListRow,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  Subtitle,
+  TextField,
+  Title,
+} from "../ui/kit";
+import { ListSkeleton } from "../ui/skeleton";
+import { COLORS, SPACE } from "../ui/theme";
 
 import {
   type CommandResult,
@@ -88,6 +99,9 @@ type ScreenState =
 
 type Notice = { tone: "ok" | "err"; message: string } | null;
 
+/** Which answer is being confirmed, if any. Two taps for every one of them. */
+type Pane = "idle" | "accept" | "reject" | "cancel";
+
 export function TransferDetailScreen({
   transferToken,
   onAccepted,
@@ -99,9 +113,7 @@ export function TransferDetailScreen({
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmingAccept, setConfirmingAccept] = useState(false);
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
+  const [pane, setPane] = useState<Pane>("idle");
   const [rejectReason, setRejectReason] = useState("");
 
   const load = useCallback(async () => {
@@ -128,9 +140,7 @@ export function TransferDetailScreen({
       setNotice(null);
       const result = await sendTransferCommand(sessionPort, input);
       setBusy(false);
-      setConfirmingAccept(false);
-      setConfirmingCancel(false);
-      setRejecting(false);
+      setPane("idle");
       if (result.outcome !== "ok") {
         setNotice({
           tone: "err",
@@ -170,7 +180,14 @@ export function TransferDetailScreen({
     [run],
   );
 
-  if (state.phase === "loading") return <Loading label="Cargando la propuesta…" />;
+  if (state.phase === "loading") {
+    return (
+      <Screen>
+        <Title>Transferencia</Title>
+        <ListSkeleton rows={2} label="Cargando la propuesta…" />
+      </Screen>
+    );
+  }
 
   if (state.phase === "failed") {
     return (
@@ -179,7 +196,7 @@ export function TransferDetailScreen({
         <Callout tone="err">
           <Body>{state.message}</Body>
         </Callout>
-        <SecondaryButton label="Reintentar" onPress={() => void load()} />
+        <PrimaryButton label="Reintentar" onPress={() => void load()} />
       </Screen>
     );
   }
@@ -192,7 +209,7 @@ export function TransferDetailScreen({
     return (
       <Screen>
         <Title>Transferencia</Title>
-        <Card>
+        <Callout tone="neutral">
           <Body>
             No encontramos esta propuesta en tu cuenta. Puede que ya no esté disponible o que no sea
             para vos.
@@ -223,8 +240,15 @@ export function TransferDetailScreen({
             Si en cambio tenés otra cuenta, puede que se la hayan enviado a ese correo: entrá con
             esa cuenta, o pedile a quien te la envió que la reenvíe a este correo.
           </Body>
-        </Card>
-        <SecondaryButton label="Reintentar" onPress={() => void load()} />
+        </Callout>
+        {/* NO PRIMARY HERE, on purpose: the arm cannot tell which of its two
+            causes is the reader's, so neither way out is "the" next step. Both
+            are rows of equal weight. */}
+        <ListRow
+          label="Reintentar"
+          caption="Volver a leer tus transferencias."
+          onPress={() => void load()}
+        />
         {/* THE LABEL NAMES THE CASE IT BELONGS TO, which is what lets it be
             offered unconditionally on an arm the screen cannot disambiguate
             (finding F9). "Cerrar sesión" beside "puede que no sea para vos"
@@ -236,8 +260,9 @@ export function TransferDetailScreen({
             person deliberately closed (`signedOutHref`), and this is the one
             sign-out whose whole purpose is to come BACK here with the other
             account — see `KEEP_DESTINATION_ON_SIGN_OUT`. */}
-        <SecondaryButton
+        <ListRow
           label="Entrar con otra cuenta"
+          caption="Si te la enviaron a otro correo tuyo."
           onPress={() => void signOut(KEEP_DESTINATION_ON_SIGN_OUT)}
         />
       </Screen>
@@ -245,15 +270,13 @@ export function TransferDetailScreen({
   }
 
   const transfer = state.transfer;
-  const counterparty = transferCounterpartyLabel(transfer);
-  const reason = transferReasonLabel(transfer);
-  const deadline = transferDeadlineLabel(transfer);
-  const { canAccept, canReject, canCancel } = transfer.capabilities;
 
   return (
     <Screen keyboardAvoiding>
-      <Title>{transferHeadline(transfer)}</Title>
-      <Body>{transferStatusLabel(transfer.status)}</Body>
+      <View style={styles.header}>
+        <Title>{transferHeadline(transfer)}</Title>
+        <Subtitle>{transferStatusLabel(transfer.status)}</Subtitle>
+      </View>
 
       {notice !== null && (
         <Callout tone={notice.tone}>
@@ -261,127 +284,183 @@ export function TransferDetailScreen({
         </Callout>
       )}
 
-      <Card title="Detalle de la transferencia">
-        {counterparty !== null && <Body>{counterparty}</Body>}
-        {reason !== null && <Row label="Motivo" value={reason} />}
-        {transfer.note !== null && <Row label="Comentario" value={transfer.note} />}
-        {/* Only while there IS one. The status line under the title already says
-            how an answered proposal ended. */}
-        {deadline !== null && <Row label="Vencimiento" value={deadline} />}
-        {/* OUTGOING ONLY (A4-R-04). On an incoming proposal `toEmail` is the
-            READER'S OWN address, and the view-model's header already calls that
-            noise: "Recibiste a Firu" followed by a row labelled "Email del
-            receptor" carrying the address of the person holding the phone. On an
-            outgoing one it is the only place the address appears when the
-            recipient has a display name. */}
-        {transfer.direction === "outgoing" && (
-          <Row label="Email del receptor" value={transfer.toEmail} />
-        )}
-        {transfer.rejectionReason !== null && (
-          <Row label="Motivo del rechazo" value={transfer.rejectionReason} />
-        )}
-      </Card>
+      <TransferActions
+        transfer={transfer}
+        busy={busy}
+        pane={pane}
+        onPane={setPane}
+        rejectReason={rejectReason}
+        onRejectReason={setRejectReason}
+        onRun={runBuilt}
+      />
 
-      {/* EVERY CONTROL IS GATED ON A SERVER FLAG, never on `status`. The three
-          are independent: an expired proposal can still be rejected but not
-          accepted, and only the SENDER may cancel. */}
-      {canAccept && (
-        <View style={styles.actions}>
-          {confirmingAccept ? (
-            <Callout tone="warn">
-              <Body>
-                Al aceptar, {transfer.pet.name} pasa a tu nombre. Es definitivo: no se puede
-                deshacer.
-              </Body>
-              <PrimaryButton
-                label={busy ? "Aceptando…" : "Sí, aceptar la titularidad"}
-                disabled={busy}
-                onPress={() => runBuilt(buildAcceptTransfer(transfer.transferToken))}
-              />
-              <SecondaryButton
-                label="No, volver"
-                disabled={busy}
-                onPress={() => setConfirmingAccept(false)}
-              />
-            </Callout>
-          ) : (
-            <PrimaryButton
-              label="Aceptar la titularidad"
-              disabled={busy}
-              onPress={() => setConfirmingAccept(true)}
-            />
-          )}
-        </View>
-      )}
-
-      {canReject && (
-        <View style={styles.actions}>
-          {rejecting ? (
-            <>
-              <TextField
-                accessibilityLabel="Motivo del rechazo"
-                editable={!busy}
-                label="Motivo (opcional)"
-                maxLength={TRANSFER_NOTE_MAX}
-                onChangeText={setRejectReason}
-                value={rejectReason}
-              />
-              <PrimaryButton
-                label={busy ? "Rechazando…" : "Confirmar el rechazo"}
-                disabled={busy}
-                onPress={() => runBuilt(buildRejectTransfer(transfer.transferToken, rejectReason))}
-              />
-              <SecondaryButton label="Volver" disabled={busy} onPress={() => setRejecting(false)} />
-            </>
-          ) : (
-            <SecondaryButton
-              label="Rechazar la propuesta"
-              disabled={busy}
-              onPress={() => setRejecting(true)}
-            />
-          )}
-        </View>
-      )}
-
-      {/* WITHDRAWING TAKES TWO TAPS TOO (A4-R-02). It is irreversible in the same
-          way accepting is — the proposal is cancelled for good and the recipient
-          is notified — and it sat one thumb-slip away while scrolling to read the
-          deadline. The web gates the same act behind "Confirmar cancelación"
-          (`AcceptTransferActions.tsx:165-211`); this screen already owns the
-          confirm-callout pattern for accept, so it is the same shape twice. */}
-      {canCancel && (
-        <View style={styles.actions}>
-          {confirmingCancel ? (
-            <Callout tone="warn">
-              <Body>Si después querés transferir de nuevo tenés que iniciar otra propuesta.</Body>
-              <PrimaryButton
-                tone="seal"
-                label={busy ? "Cancelando…" : "Confirmar cancelación"}
-                disabled={busy}
-                onPress={() => runBuilt(buildCancelTransfer(transfer.transferToken))}
-              />
-              <SecondaryButton
-                label="Atrás"
-                disabled={busy}
-                onPress={() => setConfirmingCancel(false)}
-              />
-            </Callout>
-          ) : (
-            <>
-              <SecondaryButton
-                label="Retirar la propuesta"
-                disabled={busy}
-                onPress={() => setConfirmingCancel(true)}
-              />
-              <Body>Retirarla la cancela para siempre. Podés enviar una nueva después.</Body>
-            </>
-          )}
-        </View>
-      )}
+      <TransferFacts transfer={transfer} />
     </Screen>
   );
 }
 
+/**
+ * The answer, ONE PANE AT A TIME. While a confirmation (or the reject form) is
+ * open it is the only action on screen, so there is never more than one
+ * primary button: the old layout could show "Sí, aceptar" and "Confirmar el
+ * rechazo" stacked together. Every pane has its own way back, which restores
+ * the rows.
+ *
+ * EVERY CONTROL IS GATED ON A SERVER FLAG, never on `status`. The three are
+ * independent: an expired proposal can still be rejected but not accepted, and
+ * only the SENDER may cancel.
+ *
+ * THE ANSWER COMES FIRST, the detail after it (custody polish, 2026-10-07): the
+ * person arrives from a notification to answer, and the one thing they most
+ * likely came to do is the primary — accepting, on an incoming proposal.
+ * Rejecting and withdrawing are rows: reachable, and not competing with it.
+ */
+function TransferActions({
+  transfer,
+  busy,
+  pane,
+  onPane,
+  rejectReason,
+  onRejectReason,
+  onRun,
+}: {
+  transfer: MyTransferV1;
+  busy: boolean;
+  pane: Pane;
+  onPane: (pane: Pane) => void;
+  rejectReason: string;
+  onRejectReason: (value: string) => void;
+  onRun: (built: CommandResult) => void;
+}) {
+  const { canAccept, canReject, canCancel } = transfer.capabilities;
+
+  if (pane === "accept" && canAccept) {
+    return (
+      <Callout tone="warn" title="¿Aceptás la titularidad?">
+        <Body>
+          Al aceptar, {transfer.pet.name} pasa a tu nombre. Es definitivo: no se puede deshacer.
+        </Body>
+        <PrimaryButton
+          label={busy ? "Aceptando…" : "Sí, aceptar la titularidad"}
+          disabled={busy}
+          onPress={() => onRun(buildAcceptTransfer(transfer.transferToken))}
+        />
+        <SecondaryButton label="No, volver" disabled={busy} onPress={() => onPane("idle")} />
+      </Callout>
+    );
+  }
+
+  if (pane === "reject" && canReject) {
+    return (
+      <Callout tone="neutral" title="¿Rechazás la propuesta?">
+        <TextField
+          accessibilityLabel="Motivo del rechazo"
+          editable={!busy}
+          label="Motivo (opcional)"
+          maxLength={TRANSFER_NOTE_MAX}
+          onChangeText={onRejectReason}
+          value={rejectReason}
+        />
+        <PrimaryButton
+          tone="seal"
+          label={busy ? "Rechazando…" : "Confirmar el rechazo"}
+          disabled={busy}
+          onPress={() => onRun(buildRejectTransfer(transfer.transferToken, rejectReason))}
+        />
+        <SecondaryButton label="Volver" disabled={busy} onPress={() => onPane("idle")} />
+      </Callout>
+    );
+  }
+
+  // WITHDRAWING TAKES TWO TAPS TOO (A4-R-02). It is irreversible in the same way
+  // accepting is — the proposal is cancelled for good and the recipient is
+  // notified — and it sat one thumb-slip away while scrolling to read the
+  // deadline. The web gates the same act behind "Confirmar cancelación"
+  // (`AcceptTransferActions.tsx:165-211`); this screen already owns the
+  // confirm-callout pattern for accept, so it is the same shape twice.
+  if (pane === "cancel" && canCancel) {
+    return (
+      <Callout tone="warn" title="¿Retirás la propuesta?">
+        <Body>Si después querés transferir de nuevo tenés que iniciar otra propuesta.</Body>
+        <PrimaryButton
+          tone="seal"
+          label={busy ? "Cancelando…" : "Confirmar cancelación"}
+          disabled={busy}
+          onPress={() => onRun(buildCancelTransfer(transfer.transferToken))}
+        />
+        <SecondaryButton label="Atrás" disabled={busy} onPress={() => onPane("idle")} />
+      </Callout>
+    );
+  }
+
+  // The rows are inert (no `onPress`) while a command is in flight, which is
+  // how `ListRow` draws and announces a disabled row.
+  const open = (next: Pane) => (busy ? undefined : () => onPane(next));
+  return (
+    <>
+      {canAccept ? (
+        <PrimaryButton
+          label="Aceptar la titularidad"
+          disabled={busy}
+          onPress={() => onPane("accept")}
+        />
+      ) : null}
+      {canReject ? (
+        <ListRow
+          label="Rechazar la propuesta"
+          caption="Podés contar por qué. Le avisamos a quien te la envió."
+          onPress={open("reject")}
+        />
+      ) : null}
+      {canCancel ? (
+        <ListRow
+          label="Retirar la propuesta"
+          caption="Retirarla la cancela para siempre. Podés enviar una nueva después."
+          onPress={open("cancel")}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** The detail, as label/value lines under the answer: read, not acted on. */
+function TransferFacts({ transfer }: { transfer: MyTransferV1 }) {
+  const counterparty = transferCounterpartyLabel(transfer);
+  const reason = transferReasonLabel(transfer);
+  const deadline = transferDeadlineLabel(transfer);
+  return (
+    <View style={styles.section}>
+      <Eyebrow>Detalle de la transferencia</Eyebrow>
+      {counterparty !== null && <Body>{counterparty}</Body>}
+      {reason !== null && <Row label="Motivo" value={reason} />}
+      {transfer.note !== null && <Row label="Comentario" value={transfer.note} />}
+      {/* Only while there IS one. The status line under the title already says
+          how an answered proposal ended. */}
+      {deadline !== null && <Row label="Vencimiento" value={deadline} />}
+      {/* OUTGOING ONLY (A4-R-04). On an incoming proposal `toEmail` is the
+          READER'S OWN address, and the view-model's header already calls that
+          noise: "Recibiste a Firu" followed by a row labelled "Email del
+          receptor" carrying the address of the person holding the phone. On an
+          outgoing one it is the only place the address appears when the
+          recipient has a display name. */}
+      {transfer.direction === "outgoing" && (
+        <Row label="Email del receptor" value={transfer.toEmail} />
+      )}
+      {transfer.rejectionReason !== null && (
+        <Row label="Motivo del rechazo" value={transfer.rejectionReason} />
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  actions: { gap: SPACE.sm, marginTop: SPACE.md },
+  header: { gap: SPACE.xs },
+  // The detail, as a sheet of label/value lines rather than a titled Card: it
+  // is read, not acted on, so it sits under the answer.
+  section: {
+    gap: SPACE.sm,
+    paddingTop: SPACE.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
 });
