@@ -339,6 +339,18 @@ describe("PetDocumentScreen — the header learns the animal's name", () => {
   });
 });
 
+describe("PetDocumentScreen — the first read draws the credential's shape", () => {
+  it("shows a credential-shaped skeleton inside the document, not a spinner", async () => {
+    mockFetchOwnerPetDetail.mockReturnValueOnce(new Promise(() => {}));
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    expect(screen.getByRole("progressbar", { name: "Leyendo la ficha…" })).toBeOnTheScreen();
+    expect(
+      screen.getByTestId("credential-face-skeleton", { includeHiddenElements: true }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Leyendo la ficha…")).toBeNull();
+  });
+});
+
 describe("PetDocumentScreen — two faces of one document", () => {
   it("opens on Credencial · frente, with the animal on it", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
@@ -1253,7 +1265,7 @@ describe("PetDocumentScreen — a pull re-reads the document without taking it a
 
     // The screen's own placeholder is the first read's indicator. The
     // platform's is for the gesture, and no gesture happened.
-    expect(screen.getByText("Leyendo la ficha…")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Leyendo la ficha…")).toBeOnTheScreen();
     expect(control().props.refreshing).toBe(false);
 
     await act(async () => {
@@ -1285,7 +1297,7 @@ describe("PetDocumentScreen — a pull re-reads the document without taking it a
     expect(mockFetchOwnerPetDetail).toHaveBeenCalledTimes(2);
     // And the document is still there, with no spinner nobody asked for.
     expect(screen.getByText("Pampa")).toBeOnTheScreen();
-    expect(screen.queryByText("Leyendo la ficha…")).toBeNull();
+    expect(screen.queryByLabelText("Leyendo la ficha…")).toBeNull();
     expect(control().props.refreshing).toBe(false);
 
     await act(async () => {
@@ -1308,7 +1320,7 @@ describe("PetDocumentScreen — a pull re-reads the document without taking it a
     // the sections below the card, and no placeholder.
     expect(screen.getByText("Pampa")).toBeOnTheScreen();
     expect(screen.getByText("Recordatorios")).toBeOnTheScreen();
-    expect(screen.queryByText("Leyendo la ficha…")).toBeNull();
+    expect(screen.queryByLabelText("Leyendo la ficha…")).toBeNull();
     expect(control().props.refreshing).toBe(true);
     expect(mockFetchOwnerPetDetail).toHaveBeenCalledTimes(2);
 
@@ -1340,7 +1352,7 @@ describe("PetDocumentScreen — a pull re-reads the document without taking it a
     // reaching the libreta must not mean throwing it away and mounting a new
     // one. The placeholder is the witness that it was: it only renders while
     // the libreta's own state is `loading`.
-    expect(screen.queryByText("Leyendo la libreta…")).toBeNull();
+    expect(screen.queryByLabelText("Leyendo la libreta…")).toBeNull();
     // NO WRITE BUTTON ON THIS FACE (PO annotate 2026-10-05, LibretaScreen.tsx):
     // Anotar moved to the front face's primary row. Pinned as an absence so a
     // second Anotar cannot creep back onto the ledger during a refresh.

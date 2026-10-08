@@ -51,13 +51,14 @@ import { BackHandler, StyleSheet, Text, View } from "react-native";
 import { apiFailureMessage } from "../api/client";
 import { fetchFormerOwnerPetRead, fetchOwnerPetDetail } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
-import { Body, Card, Loading, StaleNotice } from "../ui/components";
+import { Body, Card, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { Screen, pullToRefresh } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { COLORS, LEADING, SPACE, TYPE } from "../ui/theme";
 import { useReconnect } from "../ui/use-reconnect";
 import { DocumentChromeNative, type DocumentFace } from "./DocumentChromeNative";
+import { CredentialFaceSkeleton } from "./DocumentSkeletons";
 import { TurningSheet, useDocumentTurn } from "./DocumentTurn";
 import { FormerOwnerFace } from "./FormerOwnerFace";
 import { LibretaScreen } from "./LibretaScreen";
@@ -362,7 +363,7 @@ function FrontFaceBody({ state, panel }: { state: OwnerState; panel: OwnerPanelV
   if (state.phase === "loading") {
     return (
       <View style={styles.facePad}>
-        <Loading label="Leyendo la ficha…" />
+        <CredentialFaceSkeleton />
       </View>
     );
   }
