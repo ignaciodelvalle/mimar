@@ -13,7 +13,7 @@ import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
 import { NearbyFallbackNotice, NearbyOrgList } from "@/components/found-help/NearbyOrgList";
 import type { LocalitySearchResult } from "@/lib/infra/ar-localidades";
 import type { NearbyHelp } from "@/src/modules/organizations/domain/nearby-help";
-import { findNearbyHelpAction } from "@/src/modules/organizations/found-animal-actions";
+import { findNearbyHelpAction } from "@/src/modules/organizations/found-help-public-actions";
 
 type Lookup =
   | { state: "idle" }
