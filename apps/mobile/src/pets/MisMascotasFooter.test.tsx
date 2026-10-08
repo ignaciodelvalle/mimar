@@ -347,4 +347,26 @@ describe("the one-time notice 'Lo que estaba abajo ahora está en el menú ☰'"
     await screen.findByText(HOME_MENU_NOTICE_TEXT);
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("still shows, and nothing crashes, when the storage read REJECTS", async () => {
+    // The recoverable direction (see `MovedToMenuNotice.tsx`): storage that will
+    // not answer means "not dismissed", never a crash of the home and never a
+    // notice withheld forever.
+    const original = AsyncStorage.getItem.bind(AsyncStorage);
+    const getItem = jest
+      .spyOn(AsyncStorage, "getItem")
+      .mockImplementation((key: string) =>
+        key === HOME_MENU_NOTICE_DISMISSED_KEY
+          ? Promise.reject(new Error("storage unavailable"))
+          : original(key),
+      );
+    try {
+      render(<MisMascotasScreen />);
+      expect(await screen.findByText(HOME_MENU_NOTICE_TEXT)).toBeTruthy();
+      expect(screen.getByText("Mascota 0")).toBeTruthy();
+      expect(getItem).toHaveBeenCalledWith(HOME_MENU_NOTICE_DISMISSED_KEY);
+    } finally {
+      getItem.mockRestore();
+    }
+  });
 });
