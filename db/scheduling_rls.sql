@@ -158,7 +158,8 @@ create policy "appointments read by provider vet"
 -- ============================================================================
 -- Since 0288 (byte-identical to that migration): a restrictive policy AND-ed
 -- with every permissive one above, so an institutional account holding only
--- a password (aal1) token reads none of these three tables. Personal
+-- a password (aal1) token reads none of these three tables (0290 adds
+-- service_offerings below, for four). Personal
 -- accounts — owners, the provider vet, personal-account members — pass it.
 drop policy if exists "institutional sessions require aal2" on public.service_schedule_rules;
 create policy "institutional sessions require aal2" on public.service_schedule_rules
