@@ -14,6 +14,7 @@ import {
   RABIES_VACCINE_NAME,
   VACCINE_CATALOG,
   findVaccineByName,
+  isPlainRabiesVaccineName,
   isRabiesVaccineName,
   vaccineNameKey,
 } from "@/lib/reference/lookups";
@@ -163,6 +164,28 @@ describe("front and back agree on the same asiento", () => {
     expect(backStatus("DHPP + antirrábica", "Quíntuple (DHPPi)")).toBe("unconfirmed");
     expect(summary.otherCount).toBe(1);
   });
+
+  it.each(["Vacuna antirrábica anual", "antirrabica 2024", "Vacuna contra la rabia", "Rabia"])(
+    "%j is plain rabies: the calendar's Antirrábica, nothing off-calendar, the others missing",
+    (name) => {
+      expect(isPlainRabiesVaccineName(name)).toBe(true);
+      const summary = back(name);
+      expect(backStatus(name, RABIES_VACCINE_NAME)).toBe("active");
+      expect(summary.otherCount).toBe(0);
+      expect(summary.unconfirmed).toBe(0);
+    },
+  );
+
+  it.each(["Rabia (Nobivac)", "DHPP + antirrábica", "antirrábica refuerzo post-exposición"])(
+    "%j may carry another vaccine: rabies counts, the other cores stay unconfirmed",
+    (name) => {
+      expect(isPlainRabiesVaccineName(name)).toBe(false);
+      const summary = back(name);
+      expect(backStatus(name, RABIES_VACCINE_NAME)).toBe("active");
+      expect(summary.otherCount).toBe(1);
+      expect(backStatus(name, "Séxtuple (DHPPi-L)")).toBe("unconfirmed");
+    },
+  );
 
   it("a plain rabies name ('Rabia') leaves the other cores missing", () => {
     const summary = back("Rabia");
