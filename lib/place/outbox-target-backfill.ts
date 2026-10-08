@@ -12,8 +12,16 @@
 // A source that never resolved gives NULL + 'unresolved'. Two matching
 // sources of the same kind that disagree, or no matching source at all,
 // decide NOTHING: the row keeps NULL/NULL ("not recorded"), never a guess.
+// So does a source whose method the outbox column cannot record: an
+// event_places row settled by a projection-only method (0291
+// `homonym_by_coordinates`) is not in the 0248 `target_place_method` CHECK,
+// and relabelling it would claim a method that did not happen.
 //
 // Pure. The writer is scripts/place-backfill-outbox-targets.ts.
+
+import { PLACE_METHODS } from "@/lib/domain/place";
+
+const RECORDABLE: ReadonlySet<string> = new Set(PLACE_METHODS);
 
 export type TargetSource = {
   source: "case" | "event";
@@ -35,6 +43,7 @@ function decide(matches: readonly TargetSource[]): OutboxTargetPlan | null | "no
   if (ids.size > 1) return null;
   const first = matches[0] as TargetSource;
   if (first.localityId === null) return { localityId: null, placeMethod: "unresolved" };
+  if (first.method !== null && !RECORDABLE.has(first.method)) return null;
   return { localityId: first.localityId, placeMethod: first.method ?? "catalogue_id" };
 }
 
