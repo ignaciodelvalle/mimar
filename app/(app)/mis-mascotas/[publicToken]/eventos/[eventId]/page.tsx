@@ -10,6 +10,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AuthorChip } from "@/components/pet-profile/AuthorChip";
+import {
+  TRIP_PAPERS_DESTINATION_KEY,
+  TRIP_PAPERS_TRAVEL_DATE_KEY,
+  tripPapersTripOf,
+} from "@/components/pet-profile/asiento-fields";
 import { AmendedBadge } from "@/components/ui/AmendedBadge";
 import { LnCard, LnCardBody, LnCardHead } from "@/components/ui/Card";
 import { attachments, db, petEvents } from "@/db";
@@ -21,6 +26,7 @@ import {
   amendAuthorshipRefusal,
   amendBannerCopy,
   applyAmendments,
+  isTripPapersAmendment,
 } from "@/lib/infra/amendment";
 import { withholdUnreadableDecomisoEvidence } from "@/lib/infra/decomiso-evidence-access";
 import { canAccessTravel } from "@/lib/infra/pet-access";
@@ -28,7 +34,10 @@ import { requireOwnedPetByToken } from "@/lib/infra/pets";
 import { eventAttachmentSignedUrl } from "@/lib/infra/storage";
 import { eventTypeLabel, formatDateTime } from "@/lib/utils/format";
 import { readTitularTenures } from "@/src/modules/events/application/amendment/amend-authorship";
-import { readAmendmentChain } from "@/src/modules/events/application/read/load-pet-event-detail";
+import {
+  readAmendmentChain,
+  readEventRow,
+} from "@/src/modules/events/application/read/load-pet-event-detail";
 import { and, eq } from "drizzle-orm";
 import { AmendEventButton } from "./AmendEventButton";
 
@@ -104,7 +113,30 @@ export default async function EventDetailPage({
   // H3 — curated es-AR key/value rows (whitelist), never a raw JSON dump: the
   // same helper EventTimeline's "Ver detalle" already uses. Never emits
   // firma_hash, evidence_hash, *_id, source, or payload_version.
-  const details = eventPayloadDetails(event.eventType, correctedPayload);
+  const payloadDetails = eventPayloadDetails(event.eventType, correctedPayload);
+
+  // A "Lo tengo" papers tick is the owner keeping a trip's checklist, not a
+  // correction: it is named and placed as the libreta draws it, says which
+  // paper it marked, and is never itself correctable (QA v14 P2b). Its trip is
+  // read under the same pet and travel fence as the tick.
+  const isTick = event.eventType === "event_amended" && isTripPapersAmendment(event.payload);
+  const tickTarget = isTick
+    ? (event.payload as { target_event_id?: unknown }).target_event_id
+    : null;
+  const tickedTripRow =
+    typeof tickTarget === "string"
+      ? await readEventRow(pet.id, tickTarget, canAccessTravel(accessPath, session.holderRole))
+      : null;
+  const tickedTrip = tickedTripRow ? tripPapersTripOf(tickedTripRow) : null;
+  const details = [
+    ...(tickedTrip?.country
+      ? [{ label: TRIP_PAPERS_DESTINATION_KEY, value: tickedTrip.country, field: "destination" }]
+      : []),
+    ...(tickedTrip?.travelDate
+      ? [{ label: TRIP_PAPERS_TRAVEL_DATE_KEY, value: tickedTrip.travelDate, field: "travel_date" }]
+      : []),
+    ...payloadDetails,
+  ];
 
   // Decomiso evidence keeps its metadata (PO decision D7): only a viewer who
   // reads the decomiso itself is shown it, not everyone with pet access.
@@ -143,7 +175,7 @@ export default async function EventDetailPage({
       ...amendmentChain,
     ],
   );
-  const canAmend = accessPath === "owner" && authorshipRefusal === null;
+  const canAmend = accessPath === "owner" && authorshipRefusal === null && !isTick;
   // D9 (portal-vet-p0): the banner says what is true for THIS viewer and THIS
   // record — it used to promise "podés registrar una corrección" to an owner
   // looking at a vet's record she is offered no button for.
@@ -166,13 +198,15 @@ export default async function EventDetailPage({
       {/* Header */}
       <div className="mb-6">
         <p className="font-ln-mono text-xs uppercase tracking-[.3em] text-[var(--color-ln-mute)]">
-          {eventTypeLabel(eventType)}
+          {isTick ? "Viaje" : eventTypeLabel(eventType)}
         </p>
         <h1 className="mt-1 font-ln-serif text-2xl font-semibold leading-tight tracking-[-0.01em] text-[var(--color-ln-ink)]">
           {heading}
         </h1>
-        {summary.secondary && (
-          <p className="mt-1 text-md text-[var(--color-ln-mute)]">{summary.secondary}</p>
+        {(isTick ? tickedTrip?.country : summary.secondary) && (
+          <p className="mt-1 text-md text-[var(--color-ln-mute)]">
+            {isTick ? tickedTrip?.country : summary.secondary}
+          </p>
         )}
         {/* Author chip + amended badge */}
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -186,20 +220,23 @@ export default async function EventDetailPage({
         </div>
       </div>
 
-      {/* Append-only banner + amend affordance */}
-      <div
-        className="mb-4 flex flex-col gap-2.5 rounded-[var(--radius-sm)] border border-[var(--color-ln-line)] bg-[var(--color-ln-stripe)] px-3.5 py-2.5"
-        role="note"
-      >
-        <p className="font-ln-mono text-sm text-[var(--color-ln-mute)]">{bannerCopy}</p>
-        <AmendEventButton
-          eventId={event.id}
-          eventType={event.eventType}
-          currentPayload={correctedPayload}
-          canAmend={canAmend}
-          publicToken={publicToken}
-        />
-      </div>
+      {/* Append-only banner + amend affordance — not on a papers tick, which is
+          a checklist mark and not a record anyone corrects. */}
+      {!isTick && (
+        <div
+          className="mb-4 flex flex-col gap-2.5 rounded-[var(--radius-sm)] border border-[var(--color-ln-line)] bg-[var(--color-ln-stripe)] px-3.5 py-2.5"
+          role="note"
+        >
+          <p className="font-ln-mono text-sm text-[var(--color-ln-mute)]">{bannerCopy}</p>
+          <AmendEventButton
+            eventId={event.id}
+            eventType={event.eventType}
+            currentPayload={correctedPayload}
+            canAmend={canAmend}
+            publicToken={publicToken}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-4">
         {/* Timestamps */}

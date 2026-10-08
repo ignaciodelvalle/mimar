@@ -33,6 +33,7 @@ import {
 import { computeConfidence } from "@/lib/events/event-confidence";
 import { upcastPayload } from "@/lib/events/event-upcasters";
 import {
+  TRIP_PAPERS_TICK_TITLE,
   corridorDisplayLabel,
   eventPayloadDetails,
   eventPayloadSummary,
@@ -109,7 +110,7 @@ export type AsientoView = {
 };
 
 /** What a papers tick is called in the libreta (QA 2026-10-07, copy 8). */
-export const TRIP_PAPERS_UPDATED_LABEL = "Papeles del viaje actualizados";
+export const TRIP_PAPERS_UPDATED_LABEL = TRIP_PAPERS_TICK_TITLE;
 
 // ---------------------------------------------------------------------------
 // Trip papers ticks — presentation-only grouping
@@ -153,17 +154,29 @@ function calendarDay(value: unknown): Date | null {
 export function tripPapersContext(rows: ReadonlyArray<HistorialEventRow>): TripPapersContext {
   const trips = new Map<string, TripPapersTrip>();
   for (const row of rows) {
-    if (row.eventType !== "movement_recorded") continue;
-    const p = (upcastPayload(row.eventType as EventType, row.payload) ?? {}) as P;
-    if (p.sub_kind !== "transport_recorded") continue;
-    const corridor = str(p, "corridor_id");
-    const day = calendarDay(p.travel_date);
-    trips.set(row.id, {
-      country: corridor ? corridorDisplayLabel(corridor) : null,
-      travelDate: day ? formatAbsolute(day) : null,
-    });
+    const trip = tripPapersTripOf(row);
+    if (trip) trips.set(row.id, trip);
   }
   return trips;
+}
+
+/**
+ * What a tick prints about ONE trip row, or null when the row is not a trip.
+ * The libreta's context and the tick's own detail screen both read it, so a
+ * tick says the same destination in the list and when it is opened.
+ */
+export function tripPapersTripOf(
+  row: Pick<HistorialEventRow, "eventType" | "payload">,
+): TripPapersTrip | null {
+  if (row.eventType !== "movement_recorded") return null;
+  const p = (upcastPayload(row.eventType as EventType, row.payload) ?? {}) as P;
+  if (p.sub_kind !== "transport_recorded") return null;
+  const corridor = str(p, "corridor_id");
+  const day = calendarDay(p.travel_date);
+  return {
+    country: corridor ? corridorDisplayLabel(corridor) : null,
+    travelDate: day ? formatAbsolute(day) : null,
+  };
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { eventPayloadDetails } from "@/lib/events/events";
+import { eventPayloadDetails, eventPayloadSummary, formatPayloadDay } from "@/lib/events/events";
 
 describe("eventPayloadDetails — curated es-AR whitelist (H3)", () => {
   it("returns es-AR labels for a vaccination", () => {
@@ -90,5 +90,56 @@ describe("eventPayloadDetails — curated es-AR whitelist (H3)", () => {
   it("unknown event type → []", () => {
     expect(eventPayloadDetails("pet_registered", { foo: "bar" })).toEqual([]);
     expect(eventPayloadDetails("credential_scanned", {})).toEqual([]);
+  });
+});
+
+// QA v14 P2b/P2c (2026-10-07).
+describe("a 'Lo tengo' papers tick says which paper it marked", () => {
+  const tick = (oldDocs: string[], newDocs: string[]) => ({
+    target_event_id: "trip-1",
+    changes: [{ field: "documents_confirmed", old: oldDocs, new: newDocs }],
+  });
+
+  it("names the paper marked as ready", () => {
+    expect(
+      eventPayloadDetails("event_amended", tick(["Certificado"], ["Certificado", "CVI"])),
+    ).toEqual([{ label: "Marcado como listo", value: "CVI", field: "documents_confirmed" }]);
+  });
+
+  it("names the paper taken back", () => {
+    expect(eventPayloadDetails("event_amended", tick(["Certificado", "CVI"], ["CVI"]))).toEqual([
+      { label: "Desmarcado", value: "Certificado", field: "documents_confirmed" },
+    ]);
+  });
+
+  it("is titled like the libreta row, not 'Corrección registrada'", () => {
+    expect(eventPayloadSummary("event_amended", tick([], ["CVI"])).primary).toBe(
+      "Papeles del viaje actualizados",
+    );
+  });
+
+  it("a real correction still yields no rows here and no title of its own", () => {
+    const correction = { target_event_id: "x", changes: [{ field: "brand", old: "A", new: "B" }] };
+    expect(eventPayloadDetails("event_amended", correction)).toEqual([]);
+    expect(eventPayloadSummary("event_amended", correction).primary).toBeNull();
+  });
+});
+
+describe("a trip's summary line prints the es-AR date, never the raw ISO day", () => {
+  it("'Estados Unidos · 6/11/2026', the same date the detail row prints", () => {
+    const payload = {
+      sub_kind: "transport_recorded",
+      corridor_id: "usa",
+      travel_date: "2026-11-06",
+      mode: "air",
+    };
+    const summary = eventPayloadSummary("movement_recorded", payload);
+    expect(summary.secondary).toBe("Estados Unidos · 6/11/2026");
+    expect(summary.secondary).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    const row = eventPayloadDetails("movement_recorded", payload).find(
+      (r) => r.field === "travel_date",
+    );
+    expect(summary.secondary).toContain(row?.value ?? "missing");
+    expect(formatPayloadDay("2026-11-06")).toBe("6/11/2026");
   });
 });

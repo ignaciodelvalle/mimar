@@ -37,7 +37,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { attachments, db, organizations, petEvents } from "@/db";
 import type { EventType } from "@/db/schema";
 import { upcastPayload } from "@/lib/events/event-upcasters";
-import { type ChangeEntry, applyAmendments } from "@/lib/infra/amendment";
+import { type ChangeEntry, applyAmendments, isTripPapersAmendment } from "@/lib/infra/amendment";
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
 import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
@@ -93,6 +93,13 @@ export type PetEventDetailRead = {
   /** Oldest-first. Empty when this record was never corrected. */
   amendments: PetEventAmendmentStep[];
   attachments: PetEventAttachmentRow[];
+  /**
+   * For a "Lo tengo" papers tick only: the trip it ticks (type + payload), so
+   * the tick's detail can say which trip — read under the SAME pet and travel
+   * fence as the tick. Null for every other record, or when the trip is not
+   * readable by this caller.
+   */
+  tickedTrip: { eventType: string; payload: unknown } | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -293,11 +300,19 @@ export async function loadPetEventDetail(
   const event = await deps.readEventRow(input.petId, input.eventId, input.travelVisible);
   if (!event) return null;
 
-  const [amendments, files, orgName] = await Promise.all([
+  const tickTarget =
+    event.eventType === "event_amended" && isTripPapersAmendment(event.payload)
+      ? (event.payload as { target_event_id?: unknown }).target_event_id
+      : null;
+
+  const [amendments, files, orgName, trip] = await Promise.all([
     deps.readAmendmentChain(input.petId, event.id),
     deps.readEventAttachments(input.petId, event.id),
     event.authorOrganizationId
       ? deps.readOrganizationName(event.authorOrganizationId)
+      : Promise.resolve(null),
+    typeof tickTarget === "string"
+      ? deps.readEventRow(input.petId, tickTarget, input.travelVisible)
       : Promise.resolve(null),
   ]);
 
@@ -338,5 +353,6 @@ export async function loadPetEventDetail(
     locationLng: event.locationLng,
     amendments,
     attachments: files,
+    tickedTrip: trip ? { eventType: trip.eventType, payload: trip.payload } : null,
   };
 }

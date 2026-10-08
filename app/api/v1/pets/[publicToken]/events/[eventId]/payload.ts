@@ -30,6 +30,11 @@
 // without touching Storage. `expiresAt` is computed from the SAME number handed
 // to the signer, because two constants that agree today are two constants.
 
+import {
+  TRIP_PAPERS_DESTINATION_KEY,
+  TRIP_PAPERS_TRAVEL_DATE_KEY,
+  tripPapersTripOf,
+} from "@/components/pet-profile/asiento-fields";
 import type { EventType } from "@/db/schema";
 import { authorRoleLabel } from "@/lib/events/author-role-labels";
 import { eventPayloadDetails, eventPayloadSummary } from "@/lib/events/events";
@@ -38,6 +43,7 @@ import {
   type TitularTenure,
   amendAuthorshipRefusal,
   isAmendableEventType,
+  isTripPapersAmendment,
 } from "@/lib/infra/amendment";
 import { apiV1Envelope } from "@/lib/infra/api-v1";
 import { eventTypeLabel } from "@/lib/utils/format";
@@ -250,16 +256,39 @@ export type BuildPetEventDetailInput = {
 export function buildPetEventDetailV1(input: BuildPetEventDetailInput): PetEventDetailV1 {
   const { read, now } = input;
   const summary = eventPayloadSummary(read.eventType, read.payload);
-  const typeLabel = eventTypeLabel(read.eventType as EventType);
+  // A "Lo tengo" papers tick is the owner keeping a trip's checklist, not a
+  // correction: it is named, placed and described as the libreta draws it, and
+  // it is never itself correctable (QA v14 P2b).
+  const isTick = read.eventType === "event_amended" && isTripPapersAmendment(read.payload);
+  const typeLabel = isTick ? "Viaje" : eventTypeLabel(read.eventType as EventType);
+  const trip = isTick && read.tickedTrip ? tripPapersTripOf(read.tickedTrip) : null;
+  const tripFacts: EventFactV1[] = [];
+  if (trip?.country) {
+    tripFacts.push({
+      field: "destination",
+      label: TRIP_PAPERS_DESTINATION_KEY,
+      value: trip.country,
+    });
+  }
+  if (trip?.travelDate) {
+    tripFacts.push({
+      field: "travel_date",
+      label: TRIP_PAPERS_TRAVEL_DATE_KEY,
+      value: trip.travelDate,
+    });
+  }
 
   // The CORRECTED record. `eventPayloadDetails` is the same whitelist the web's
   // detail page renders — it never emits `firma_hash`, `evidence_hash`, a `*_id`
   // or `matched_chip_number`, and an unknown type yields no rows at all.
-  const facts: EventFactV1[] = eventPayloadDetails(read.eventType, read.payload).map((row) => ({
-    field: row.field,
-    label: row.label,
-    value: row.value,
-  }));
+  const facts: EventFactV1[] = [
+    ...tripFacts,
+    ...eventPayloadDetails(read.eventType, read.payload).map((row) => ({
+      field: row.field,
+      label: row.label,
+      value: row.value,
+    })),
+  ];
 
   const lat = Number(read.locationLat);
   const lng = Number(read.locationLng);
@@ -282,7 +311,7 @@ export function buildPetEventDetailV1(input: BuildPetEventDetailInput): PetEvent
     eventType: read.eventType,
     kind: typeLabel,
     title: summary.primary ?? typeLabel,
-    subtitle: summary.secondary,
+    subtitle: isTick ? (trip?.country ?? null) : summary.secondary,
     occurredAt: read.occurredAt.toISOString(),
     recordedAt: read.recordedAt.toISOString(),
     notes: read.notes,
@@ -302,18 +331,20 @@ export function buildPetEventDetailV1(input: BuildPetEventDetailInput): PetEvent
       input.attachments === null
         ? { status: "unavailable" }
         : { status: "ok", data: { items: input.attachments } },
-    amend: resolveAmendAffordance({
-      eventType: read.eventType,
-      accessPath: input.accessPath,
-      petStatus: input.petStatus,
-      viewer: input.viewer,
-      authorship: {
-        authorRole: read.authorRole,
-        authorVerified: read.authorVerified,
-        recordedByUserId: read.recordedByUserId,
-        recordedAt: read.recordedAt,
-        amendments: read.amendments,
-      },
-    }),
+    amend: isTick
+      ? { canAmend: false, refusal: null }
+      : resolveAmendAffordance({
+          eventType: read.eventType,
+          accessPath: input.accessPath,
+          petStatus: input.petStatus,
+          viewer: input.viewer,
+          authorship: {
+            authorRole: read.authorRole,
+            authorVerified: read.authorVerified,
+            recordedByUserId: read.recordedByUserId,
+            recordedAt: read.recordedAt,
+            amendments: read.amendments,
+          },
+        }),
   };
 }

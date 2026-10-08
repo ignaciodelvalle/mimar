@@ -553,6 +553,25 @@ export function isTripPapersAmendment(payload: unknown): boolean {
 }
 
 /**
+ * What ONE papers tick changed: the documents it marked as ready and the ones
+ * it took back, folded over its changes (first `old` → last `new`). The detail
+ * of a tick says this — before, every "Cambio N de M" opened the same empty
+ * "Corrección registrada" with no fields (QA v14 P2b, 2026-10-07).
+ */
+export function tripPapersTickDelta(payload: unknown): { added: string[]; removed: string[] } {
+  if (!isTripPapersAmendment(payload)) return { added: [], removed: [] };
+  const changes = (payload as { changes: Array<{ old?: unknown; new?: unknown }> }).changes;
+  const asList = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const before = asList(changes[0]?.old);
+  const after = asList(changes[changes.length - 1]?.new);
+  return {
+    added: after.filter((d) => !before.includes(d)),
+    removed: before.filter((d) => !after.includes(d)),
+  };
+}
+
+/**
  * The ids of the records whose EVERY amendment in `events` is a papers tick
  * (isTripPapersAmendment). A record with one real correction among its ticks
  * is not here: it was corrected, and says so.

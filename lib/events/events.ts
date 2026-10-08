@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { EventType } from "@/db/schema";
 import { INTAKE_CONDITION_LABELS, labelOf } from "@/lib/domain/visit-labels";
 import { upcastPayload } from "@/lib/events/event-upcasters";
+import { isTripPapersAmendment, tripPapersTickDelta } from "@/lib/infra/amendment";
 import { findDisease } from "@/lib/reference/diseases";
 import { AR_TIME_ZONE, formatWeightKg, parseDateInput } from "@/lib/utils/format";
 import { welfareReportKindLabel } from "@/src/modules/welfare/domain/types";
@@ -61,6 +62,24 @@ export function corridorDisplayLabel(corridorId: string): string {
   return CORRIDOR_DISPLAY_LABELS[corridorId] ?? corridorId;
 }
 
+/**
+ * A payload day ("2026-11-06" or an ISO instant) as the es-AR calendar date
+ * every detail row prints ("6/11/2026"), or null when unreadable. A bare
+ * "YYYY-MM-DD" is anchored at noon UTC (parseDateInput) so no zone moves it.
+ *
+ * ONE formatter for the detail rows AND the summary line: the "Viaje
+ * registrado" subtitle printed the raw "2026-11-06" two lines above a row that
+ * said "6/11/2026" for the same field (QA v14 P2c, 2026-10-07).
+ */
+export function formatPayloadDay(value: string): string | null {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseDateInput(value) : new Date(value);
+  if (!d || !Number.isFinite(d.getTime())) return null;
+  return d.toLocaleDateString("es-AR", { timeZone: AR_TIME_ZONE });
+}
+
+/** The es-AR title of a "Lo tengo" papers tick (same words as the libreta). */
+export const TRIP_PAPERS_TICK_TITLE = "Papeles del viaje actualizados";
+
 // Curated, whitelisted es-AR key→value view of an event payload for the owner
 // timeline (H3, 2026-07-01). Replaces a raw JSON dump on a citizen surface: only
 // safe, human fields are emitted — never internal identifiers (*_id), hashes
@@ -93,16 +112,10 @@ export function eventPayloadDetails(
     const v = p[key];
     if (typeof v === "string" && v.length > 0) {
       // Legacy payloads may carry a bare "YYYY-MM-DD" (midnight UTC = the
-      // previous AR day) — anchor those at noon UTC before the AR-pinned
-      // render, same guard as pet-compliance.ts::parseNextDue.
-      const d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? parseDateInput(v) : new Date(v);
-      if (d && Number.isFinite(d.getTime())) {
-        rows.push({
-          label,
-          value: d.toLocaleDateString("es-AR", { timeZone: AR_TIME_ZONE }),
-          field: key,
-        });
-      }
+      // previous AR day) — formatPayloadDay anchors those at noon UTC before
+      // the AR-pinned render, same guard as pet-compliance.ts::parseNextDue.
+      const value = formatPayloadDay(v);
+      if (value) rows.push({ label, value, field: key });
     }
   };
 
@@ -203,6 +216,25 @@ export function eventPayloadDetails(
           v === "air" ? "Aéreo" : v === "land" ? "Terrestre" : v === "sea" ? "Marítimo" : v,
         );
         push("Motivo", "purpose");
+      }
+      break;
+    }
+    case "event_amended": {
+      // A "Lo tengo" papers tick is the owner keeping a trip's checklist: its
+      // detail says WHICH paper it marked or took back. Any other correction
+      // keeps no rows here — its changes are read on the corrected record, as
+      // a diff over that record's own whitelist, never echoed raw.
+      if (!isTripPapersAmendment(p)) return [];
+      const { added, removed } = tripPapersTickDelta(p);
+      if (added.length > 0) {
+        rows.push({
+          label: "Marcado como listo",
+          value: added.join(", "),
+          field: "documents_confirmed",
+        });
+      }
+      if (removed.length > 0) {
+        rows.push({ label: "Desmarcado", value: removed.join(", "), field: "documents_confirmed" });
       }
       break;
     }
@@ -545,6 +577,12 @@ export function eventPayloadSummary(eventType: string, payload: unknown): EventP
     }
     case "ownership_claimed":
       return { primary: "Mascota reclamada", secondary: null };
+    case "event_amended":
+      // A papers tick is named for what it is, as the libreta names it; any
+      // other correction falls back to the type's own label.
+      return isTripPapersAmendment(p)
+        ? { primary: TRIP_PAPERS_TICK_TITLE, secondary: null }
+        : { primary: null, secondary: null };
     case "movement_recorded": {
       const subKind = str("sub_kind");
       if (subKind === "jurisdiction_changed") {
@@ -567,7 +605,8 @@ export function eventPayloadSummary(eventType: string, payload: unknown): EventP
       }
       if (subKind === "transport_recorded") {
         const corridorId = str("corridor_id");
-        const travelDate = str("travel_date");
+        const rawTravelDate = str("travel_date");
+        const travelDate = rawTravelDate ? formatPayloadDay(rawTravelDate) : null;
         const corridorLabel = corridorId ? corridorDisplayLabel(corridorId) : null;
         return {
           primary: "Viaje registrado",

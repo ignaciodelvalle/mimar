@@ -125,6 +125,7 @@ function petRow(overrides: Record<string, unknown> = {}) {
 function detailRead(overrides: Partial<PetEventDetailRead> = {}): PetEventDetailRead {
   return {
     id: EVENT_ID,
+    tickedTrip: null,
     eventType: "vaccination_administered",
     // The CORRECTED state — this is what `old` must be read from.
     payload: { vaccine_name: "Antirrábica", batch: "L-42" },

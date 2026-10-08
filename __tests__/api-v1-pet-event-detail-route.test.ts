@@ -134,6 +134,7 @@ function detailRead(overrides: Partial<PetEventDetailRead> = {}): PetEventDetail
   };
   return {
     id: EVENT_ID,
+    tickedTrip: null,
     eventType: "vaccination_administered",
     payload: originalPayload,
     originalPayload,
@@ -542,5 +543,61 @@ describe("GET /api/v1/pets/{token}/events/{eventId} — the door", () => {
     const response = await call();
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "session_shift_expired" });
+  });
+});
+
+// QA v14 P2b (2026-10-07): every "Cambio N de 4" opened the same empty
+// "Corrección registrada" — no fields, "nunca se corrigió", "no admite
+// correcciones". A tick now says which trip and which paper.
+describe("buildPetEventDetailV1 — a 'Lo tengo' papers tick", () => {
+  function tickRead(docsBefore: string[], docsAfter: string[]): PetEventDetailRead {
+    const payload = {
+      target_event_id: "trip-1",
+      changes: [{ field: "documents_confirmed", old: docsBefore, new: docsAfter }],
+    };
+    return detailRead({
+      eventType: "event_amended",
+      payload,
+      originalPayload: payload,
+      amendments: [],
+      tickedTrip: {
+        eventType: "movement_recorded",
+        payload: {
+          sub_kind: "transport_recorded",
+          corridor_id: "usa",
+          travel_date: "2026-11-06",
+          mode: "air",
+        },
+      },
+    });
+  }
+
+  it("is named and placed like the libreta row, with what it changed", () => {
+    const built = build({ read: tickRead(["Certificado"], ["Certificado", "CVI"]) });
+    expect(built.kind).toBe("Viaje");
+    expect(built.title).toBe("Papeles del viaje actualizados");
+    expect(built.subtitle).toBe("Estados Unidos");
+    const facts = built.facts.map((f) => [f.label, f.value]);
+    expect(facts[0]).toEqual(["Destino", "Estados Unidos"]);
+    expect(facts.map((f) => f[0])).toContain("Fecha del viaje");
+    expect(facts).toContainEqual(["Marcado como listo", "CVI"]);
+  });
+
+  it("two ticks of one trip open two different details", () => {
+    const first = build({ read: tickRead([], ["Certificado"]) });
+    const second = build({ read: tickRead(["Certificado"], []) });
+    expect(first.facts).not.toEqual(second.facts);
+    expect(second.facts).toContainEqual({
+      field: "documents_confirmed",
+      label: "Desmarcado",
+      value: "Certificado",
+    });
+  });
+
+  it("is not offered as a correctable record, and says no refusal about it", () => {
+    expect(build({ read: tickRead([], ["CVI"]) }).amend).toEqual({
+      canAmend: false,
+      refusal: null,
+    });
   });
 });
