@@ -52,6 +52,7 @@ import {
   ledgerCountLabel,
   offersVerificationRequest,
   otherVaccinesNote,
+  tripPapersTickLabel,
   upcomingDueLabel,
   upcomingRemainingLabel,
   upcomingRowLabel,
@@ -306,13 +307,27 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
               {groupLedgerEntries(timeline.entries).map((item) => {
                 const entry = item.kind === "entry" ? item.entry : item.entries[0];
                 if (entry === undefined) return null;
+                const open = (eventId: string) =>
+                  router.push(libretaEventRoute(view.publicToken, eventId));
+                const onRequestVerification = view.onOwnerPath
+                  ? () => router.push(ROUTES.buscarTurnos)
+                  : null;
+                if (item.kind === "papers") {
+                  return (
+                    <PapersGroup
+                      key={entry.eventId}
+                      label={item.label}
+                      entries={item.entries}
+                      onOpen={open}
+                    />
+                  );
+                }
                 return (
                   <EntryCard
                     key={entry.eventId}
                     entry={entry}
-                    title={item.kind === "papers" ? item.label : undefined}
-                    onOpen={() => router.push(libretaEventRoute(view.publicToken, entry.eventId))}
-                    onRequestVerification={() => router.push(ROUTES.buscarTurnos)}
+                    onOpen={() => open(entry.eventId)}
+                    onRequestVerification={onRequestVerification}
                   />
                 );
               })}
@@ -408,8 +423,11 @@ function EntryCard({
   /** Overrides the asiento's own title — only a collapsed run of ticks does. */
   title?: string;
   onOpen: () => void;
-  /** Where "Pedir verificación" goes, for the asientos that offer it. */
-  onRequestVerification: () => void;
+  /**
+   * Where "Pedir verificación" goes, for the asientos that offer it; `null`
+   * withholds it (an organization's reader — the web's WalkInHistory rule).
+   */
+  onRequestVerification: (() => void) | null;
 }) {
   const showKind =
     entry.kind.trim().toLocaleLowerCase("es") !== title.trim().toLocaleLowerCase("es");
@@ -448,7 +466,7 @@ function EntryCard({
           dose links to finding a turno, where a professional can sign it.
           `/turnos/buscar` takes no service parameter yet, so it opens on the
           service picker rather than preselecting the antirrábica. */}
-      {offersVerificationRequest(entry) ? (
+      {onRequestVerification !== null && offersVerificationRequest(entry) ? (
         <LinkText
           onPress={onRequestVerification}
           accessibilityHint="Abre la búsqueda de turnos para que un profesional la verifique"
@@ -461,6 +479,52 @@ function EntryCard({
       {entry.amendedAt ? <Text style={styles.amended}>{amendedLabel(entry.amendedAt)}</Text> : null}
       {entry.hasAttachment ? <Text style={styles.attachment}>Tiene un archivo adjunto</Text> : null}
     </Pressable>
+  );
+}
+
+/**
+ * A run of trip-papers ticks drawn as ONE row — and every tick still reachable.
+ *
+ * The card is the newest tick, retitled "… · N cambios · <país>". Under it,
+ * "Ver cada cambio" unfolds one link per tick, so collapsing the drawing never
+ * takes away a record's own detail page (the web's disclosure, same words).
+ */
+function PapersGroup({
+  label,
+  entries,
+  onOpen,
+}: {
+  label: string;
+  entries: LibretaEntryV1[];
+  onOpen: (eventId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const head = entries[0];
+  if (head === undefined) return null;
+  return (
+    <View>
+      <EntryCard
+        entry={head}
+        title={label}
+        onOpen={() => onOpen(head.eventId)}
+        onRequestVerification={null}
+      />
+      <View style={styles.papersTicks}>
+        <LinkText
+          onPress={() => setExpanded((value) => !value)}
+          accessibilityHint={expanded ? "Oculta la lista" : "Muestra un enlace por cada cambio"}
+        >
+          {expanded ? "Ocultar los cambios" : "Ver cada cambio"}
+        </LinkText>
+        {expanded
+          ? entries.map((entry, index) => (
+              <LinkText key={entry.eventId} onPress={() => onOpen(entry.eventId)}>
+                {tripPapersTickLabel(index, entries.length)}
+              </LinkText>
+            ))
+          : null}
+      </View>
+    </View>
   );
 }
 
@@ -530,6 +594,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACE.xs,
   },
   entries: { gap: 0 },
+  papersTicks: { gap: SPACE.sm, paddingVertical: SPACE.sm },
   ledgerCount: { fontFamily: FONTS.mono, fontSize: TYPE.sm, color: COLORS.inkMuted },
   // The `Row` primitive's label/value contract (see LABEL_VALUE_FLEX in
   // ui/components.tsx): the label gives way, the value keeps its words.

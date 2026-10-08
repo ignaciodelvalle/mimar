@@ -17,6 +17,7 @@ import {
   speciesLine,
   tripPapersGroupLabel,
   tripPapersTickKey,
+  tripPapersTickLabel,
   upcomingDueLabel,
   upcomingKindLabel,
   upcomingRemainingLabel,
@@ -348,6 +349,13 @@ describe("groupLedgerEntries — papers ticks drawn as one row", () => {
     expect(groupLedgerEntries([orphan("o2"), orphan("o1")]).map((i) => i.kind)).toEqual([
       "entry",
       "entry",
+    ]);
+  });
+
+  it("numbers the ticks of a run in the order they happened, as the web does", () => {
+    expect([0, 1].map((i) => tripPapersTickLabel(i, 2))).toEqual([
+      "Cambio 2 de 2",
+      "Cambio 1 de 2",
     ]);
   });
 

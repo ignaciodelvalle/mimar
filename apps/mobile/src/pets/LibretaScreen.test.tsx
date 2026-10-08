@@ -352,6 +352,47 @@ describe("LibretaScreen — Pedir verificación", () => {
   });
 });
 
+describe("LibretaScreen — Pedir verificación is the owner path's", () => {
+  it("is not offered to an organization's reader", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        viewer: { role: "org_member", isTitular: false, canAmend: false },
+        timeline: {
+          status: "ok",
+          data: {
+            entries: [entry({ warning: "Falta verificación profesional" })],
+            total: 1,
+            truncated: false,
+          },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Falta verificación profesional")).toBeOnTheScreen();
+    expect(screen.queryByText("Pedir verificación")).toBeNull();
+  });
+
+  it("is offered to a caretaker, who holds the animal as a person", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        viewer: { role: "caretaker", isTitular: false, canAmend: false },
+        timeline: {
+          status: "ok",
+          data: {
+            entries: [entry({ warning: "Falta verificación profesional" })],
+            total: 1,
+            truncated: false,
+          },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Pedir verificación")).toBeOnTheScreen();
+  });
+});
+
 describe("LibretaScreen — trip papers ticks", () => {
   function tick(id: string) {
     return entry({
@@ -384,6 +425,34 @@ describe("LibretaScreen — trip papers ticks", () => {
     expect(screen.getByText("3 registros")).toBeOnTheScreen();
     fireEvent.press(row);
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/eventos/t-3`);
+  });
+
+  it("keeps every tick reachable: 'Ver cada cambio' lists one link per tick", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        timeline: {
+          status: "ok",
+          data: { entries: [tick("t-3"), tick("t-2"), tick("t-1")], total: 3, truncated: false },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    await screen.findByText("Papeles del viaje actualizados · 3 cambios · Chile");
+    expect(screen.queryByText("Cambio 2 de 3")).toBeNull();
+
+    fireEvent.press(screen.getByRole("link", { name: "Ver cada cambio" }));
+    for (const [label, id] of [
+      ["Cambio 3 de 3", "t-3"],
+      ["Cambio 2 de 3", "t-2"],
+      ["Cambio 1 de 3", "t-1"],
+    ]) {
+      fireEvent.press(screen.getByRole("link", { name: label }));
+      expect(mockPush).toHaveBeenLastCalledWith(`/mascotas/${TOKEN}/eventos/${id}`);
+    }
+
+    fireEvent.press(screen.getByRole("link", { name: "Ocultar los cambios" }));
+    expect(screen.queryByText("Cambio 2 de 3")).toBeNull();
   });
 });
 
