@@ -9,8 +9,9 @@
 // reaches the same verdict — including the parts nobody would reimplement the
 // same way by accident:
 //
-//   · `ageYears` / `ageMonths` accept a string OR a number, clamp to [0, max],
-//     truncate, and turn unparseable text into 0 rather than into a refusal.
+//   · `ageYears` / `ageMonths` accept a string OR a number and REFUSE anything
+//     that is not a whole number or past the species' cap — they used to clamp,
+//     which is how "3310 años" reached the confirm step (alta-validacion-edad).
 //   · `sex` falls back to `"unknown"` via `.catch()` instead of failing.
 //   · `acquisitionMethod` becomes `null` for anything outside the enum.
 //   · every optional text field trims and collapses empty to `null`.
@@ -35,7 +36,7 @@ import {
   firstRegisterPetInputCode,
   registerPetInputSchema,
 } from "@dim/contract/input";
-import { PROVINCES } from "@dim/contract/reference";
+import { PROVINCES, maxStatedAgeYears } from "@dim/contract/reference";
 
 /** What the wizard holds: strings, because that is what inputs contain. */
 export type PetDraft = {
@@ -109,8 +110,12 @@ export type DraftVerdict =
  * silently blank field label. Same discipline as the API error switch, for the
  * same reason — this repo has been bitten by a widened vocabulary arriving
  * through a branch merge that touched no common file.
+ *
+ * `species` is only read by `AGE_TOO_HIGH`, whose ceiling depends on it
+ * (`maxStatedAgeYears`): the sentence names the number the schema enforced, so
+ * it cannot say "40" to the owner of a tortoise whose cap is wider.
  */
-export function draftErrorMessage(code: RegisterPetInputCode): string {
+export function draftErrorMessage(code: RegisterPetInputCode, species = ""): string {
   switch (code) {
     case "NAME_REQUIRED":
       return "Poné el nombre de tu mascota.";
@@ -127,6 +132,16 @@ export function draftErrorMessage(code: RegisterPetInputCode): string {
       return "Elegí la provincia.";
     case "LOCALITY_REQUIRED":
       return "Elegí la localidad.";
+    // AT THE FIELD, and naming the fix rather than the rule: "3310" is a typo,
+    // and the useful sentence is the one that says what a valid age looks like.
+    case "AGE_YEARS_INVALID":
+      return "Poné los años como un número entero, por ejemplo 3.";
+    case "AGE_MONTHS_INVALID":
+      return "Poné los meses como un número entero, por ejemplo 6.";
+    case "AGE_MONTHS_OUT_OF_RANGE":
+      return "Si pusiste años, los meses van de 0 a 11.";
+    case "AGE_TOO_HIGH":
+      return `Revisá la edad: no puede pasar de ${maxStatedAgeYears(species)} años.`;
     case "COLOR_TOO_LONG":
       return `El color es demasiado largo (máximo ${PET_COLOR_MAX} caracteres).`;
     case "WEIGHT_INVALID":
@@ -137,16 +152,9 @@ export function draftErrorMessage(code: RegisterPetInputCode): string {
   }
 }
 
-/**
- * The draft, judged.
- *
- * `duplicateOverride` rides in the body rather than in a header or a query
- * param because that is where the schema puts it, and because it is a property
- * of THIS registration — the user's answer to "ya tenés una con ese nombre" —
- * not of the transport.
- */
-export function toRegisterPetInput(draft: PetDraft): DraftVerdict {
-  const parsed = registerPetInputSchema.safeParse({
+/** The draft as the body the schema judges — ONE mapping, read by both verdicts below. */
+function draftBody(draft: PetDraft) {
+  return {
     name: draft.name,
     species: draft.species,
     sex: draft.sex,
@@ -162,8 +170,19 @@ export function toRegisterPetInput(draft: PetDraft): DraftVerdict {
     estimatedWeightKg: draft.estimatedWeightKg,
     acquisitionMethod: draft.acquisitionMethod,
     duplicateOverride: draft.duplicateOverride,
-  });
+  };
+}
 
+/**
+ * The draft, judged.
+ *
+ * `duplicateOverride` rides in the body rather than in a header or a query
+ * param because that is where the schema puts it, and because it is a property
+ * of THIS registration — the user's answer to "ya tenés una con ese nombre" —
+ * not of the transport.
+ */
+export function toRegisterPetInput(draft: PetDraft): DraftVerdict {
+  const parsed = registerPetInputSchema.safeParse(draftBody(draft));
   if (parsed.success) return { ok: true, input: parsed.data };
 
   // `firstRegisterPetInputCode` returns the first code in the CONTRACT'S order,
@@ -180,7 +199,45 @@ export function toRegisterPetInput(draft: PetDraft): DraftVerdict {
       message: "La app no pudo armar el registro. Actualizá la app.",
     };
   }
-  return { ok: false, code, message: draftErrorMessage(code) };
+  return { ok: false, code, message: draftErrorMessage(code, draft.species) };
+}
+
+/** The codes the age fields on "detalles" own, in the contract's order. */
+const AGE_CODES = [
+  "AGE_YEARS_INVALID",
+  "AGE_MONTHS_INVALID",
+  "AGE_MONTHS_OUT_OF_RANGE",
+  "AGE_TOO_HIGH",
+] as const satisfies readonly RegisterPetInputCode[];
+
+export type AgeField = "ageYears" | "ageMonths";
+
+/**
+ * The age refusal to show AT THE FIELD on "detalles", or `null`.
+ *
+ * alta-validacion-edad (QA on a real phone, 2026-10-07): "3310 años" was
+ * accepted on this step and read back on the confirm screen as typed. The
+ * schema now refuses it; this is what lets the wizard say so on the step the
+ * owner typed it on, under the input that carries it, instead of three screens
+ * later. SAME VERDICT as `toRegisterPetInput`, not a second rule — it runs the
+ * same `registerPetInputSchema` and reads which age code it raised and on which
+ * path. Other fields' refusals are ignored here: on "detalles" the name may be
+ * fine and the weight is not this function's business.
+ */
+export function ageFieldError(draft: PetDraft): { field: AgeField; message: string } | null {
+  // The WHOLE draft, not just the two fields: zod skips an object's refinement
+  // — where the species cap lives — once a field fails its TYPE check (a
+  // missing required string does), so a partial body would hide AGE_TOO_HIGH.
+  // By "detalles" the required fields are filled; a blank one only fails `min`.
+  const parsed = registerPetInputSchema.safeParse(draftBody(draft));
+  if (parsed.success) return null;
+  for (const code of AGE_CODES) {
+    const issue = parsed.error.issues.find((candidate) => candidate.message === code);
+    if (issue === undefined) continue;
+    const field: AgeField = issue.path[0] === "ageMonths" ? "ageMonths" : "ageYears";
+    return { field, message: draftErrorMessage(code, draft.species) };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -253,9 +310,11 @@ export function advanceBlockedReason(step: WizardStep, draft: PetDraft): string 
       const verdict = toRegisterPetInput(draft);
       return verdict.ok ? null : verdict.message;
     }
-    // Both are optional: `canAdvance` is always true, so this is unreachable.
-    case "raza":
+    // Optional, but not anything-goes: a stated age has to be one.
     case "detalles":
+      return ageFieldError(draft)?.message ?? null;
+    // Optional: `canAdvance` is always true, so this is unreachable.
+    case "raza":
       return null;
   }
 }
@@ -272,8 +331,12 @@ export function canAdvance(step: WizardStep, draft: PetDraft): boolean {
     // different hat, and this form's whole point is that registering a pet takes
     // a name and a place.
     case "raza":
-    case "detalles":
       return true;
+    // Every field optional — and a blank age is fine — but an age that IS
+    // stated must be one the server will take (alta-validacion-edad). Holding
+    // the owner here is the point: the field with the typo is on this screen.
+    case "detalles":
+      return ageFieldError(draft) === null;
     case "lugar":
       return draft.provinceCode.trim().length > 0 && draft.localityName.trim().length > 0;
     case "confirmar":

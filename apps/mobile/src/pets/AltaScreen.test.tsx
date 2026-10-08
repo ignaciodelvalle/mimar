@@ -27,6 +27,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { Alert, AppState, type AppStateStatus, Keyboard } from "react-native";
 
 import { createNavigationFake } from "../ui/navigation-fake";
+import { COLORS } from "../ui/theme";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -158,6 +159,63 @@ describe("AltaScreen — F-4, el resumen muestra el nombre de la provincia", () 
 
     await waitFor(() => expect(screen.getByText("Santa Fe")).toBeOnTheScreen());
     expect(screen.queryByText("AR-S")).toBeNull();
+  });
+});
+
+describe("AltaScreen — alta-validacion-edad: la edad se valida en el campo", () => {
+  const DETALLES_STEP = 4;
+
+  it("refuses '3310' años AT THE FIELD and holds 'Continuar' — the value QA typed on a real phone", async () => {
+    await seed(SIGNED_IN_A, VALID_DRAFT, DETALLES_STEP);
+    render(<AltaScreen />);
+
+    const years = await screen.findByLabelText("Años");
+    fireEvent.changeText(years, "3310");
+
+    expect(screen.getByTestId("alta-age-error")).toHaveTextContent(
+      "Revisá la edad: no puede pasar de 40 años.",
+    );
+    // The offending input is outlined (the kit's `invalid` border), the other is not.
+    expect(screen.getByLabelText("Años")).toHaveStyle({ borderColor: COLORS.danger });
+    expect(screen.getByLabelText("Meses")).not.toHaveStyle({ borderColor: COLORS.danger });
+    fireEvent.press(screen.getByText("Continuar"));
+    // Still on "detalles": the confirm step — where "3310 años" used to read
+    // back as if it were an age — is unreachable.
+    expect(screen.getByText("Detalles (opcional)")).toBeOnTheScreen();
+    expect(screen.queryByText("Revisá antes de registrar")).toBeNull();
+    expect(mockRegisterPet).not.toHaveBeenCalled();
+  });
+
+  it("names the months field when months are not a whole number", async () => {
+    await seed(SIGNED_IN_A, VALID_DRAFT, DETALLES_STEP);
+    render(<AltaScreen />);
+
+    fireEvent.changeText(await screen.findByLabelText("Meses"), "seis");
+    expect(screen.getByTestId("alta-age-error")).toHaveTextContent(
+      "Poné los meses como un número entero, por ejemplo 6.",
+    );
+  });
+
+  it("lets a corrected age through to the confirm step", async () => {
+    await seed(SIGNED_IN_A, VALID_DRAFT, DETALLES_STEP);
+    render(<AltaScreen />);
+
+    const years = await screen.findByLabelText("Años");
+    fireEvent.changeText(years, "3310");
+    fireEvent.changeText(years, "3");
+    expect(screen.queryByTestId("alta-age-error")).toBeNull();
+
+    fireEvent.press(screen.getByText("Continuar"));
+    await waitFor(() => expect(screen.getByText("Revisá antes de registrar")).toBeOnTheScreen());
+    expect(screen.getByText("3 años 0 meses")).toBeOnTheScreen();
+  });
+
+  it("shows no age error while the age is blank — every field on this step is optional", async () => {
+    await seed(SIGNED_IN_A, VALID_DRAFT, DETALLES_STEP);
+    render(<AltaScreen />);
+
+    await screen.findByLabelText("Años");
+    expect(screen.queryByTestId("alta-age-error")).toBeNull();
   });
 });
 

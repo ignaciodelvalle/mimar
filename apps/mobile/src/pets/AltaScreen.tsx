@@ -74,6 +74,7 @@ import {
   WIZARD_STEPS,
   type WizardStep,
   advanceBlockedReason,
+  ageFieldError,
   canAdvance,
   provinceLabel,
   stepTitle,
@@ -442,7 +443,12 @@ function StepBody({
         />
       );
 
-    case "detalles":
+    case "detalles": {
+      // alta-validacion-edad (QA, real phone): "3310 años" sailed through this
+      // step to the confirm screen. The contract now refuses it, and the
+      // refusal is shown HERE, under the two inputs, with the offending one
+      // outlined — `canAdvance` holds "Continuar" until it is fixed.
+      const ageError = ageFieldError(draft);
       return (
         <>
           <Body>Nada de esto es obligatorio. Se puede completar después.</Body>
@@ -452,6 +458,7 @@ function StepBody({
                 {...detallesChain(0)}
                 accessibilityLabel="Años"
                 inputMode="numeric"
+                invalid={ageError?.field === "ageYears"}
                 label="Años"
                 mono
                 onChangeText={(ageYears) => patch({ ageYears })}
@@ -463,6 +470,7 @@ function StepBody({
                 {...detallesChain(1)}
                 accessibilityLabel="Meses"
                 inputMode="numeric"
+                invalid={ageError?.field === "ageMonths"}
                 label="Meses"
                 mono
                 onChangeText={(ageMonths) => patch({ ageMonths })}
@@ -470,6 +478,14 @@ function StepBody({
               />
             </View>
           </View>
+          {ageError === null ? null : (
+            // NOT a live region: the same sentence is the disabled button's
+            // reason below (CA-M5), which already is one — two would make a
+            // screen reader say it twice.
+            <Text style={styles.fieldError} testID="alta-age-error">
+              {ageError.message}
+            </Text>
+          )}
           <TextField
             {...detallesChain(2)}
             accessibilityLabel="Color"
@@ -514,6 +530,7 @@ function StepBody({
           </Field>
         </>
       );
+    }
 
     case "confirmar":
       return (
@@ -844,6 +861,11 @@ const styles = StyleSheet.create({
   },
   dialogActions: { gap: SPACE.sm, marginTop: SPACE.sm },
   nav: { gap: SPACE.sm, marginTop: SPACE.lg },
+  fieldError: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.base,
+    color: COLORS.danger,
+  },
   blockedReason: {
     fontFamily: FONTS.sans,
     fontSize: TYPE.base,
