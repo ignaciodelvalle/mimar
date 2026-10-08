@@ -1,99 +1,132 @@
-// The `/mascotas` footer — its ORDER, and the one gap in it that is not uniform.
+// The END of `/mascotas`, and the rule that keeps it short (inicio-app-rediseno,
+// PO 2026-10-07).
 //
-// WHY THIS FILE EXISTS AT ALL. `apps/mobile/app/mascotas/index.tsx` is the app's
-// most-opened screen and it had NO test of any kind. That was survivable while
-// the footer was a list of links; it stopped being survivable when two parallel
-// lanes appended a button to it in the same window, both wrote a long comment
-// arguing for the slot they took, and one of those comments turned out to be
-// describing a layout that did not exist — it claimed "the gap between the two is
-// bigger" while `styles.footer` set ONE uniform `gap` for every child.
+// WHAT THIS FILE USED TO PIN, AND WHY IT CHANGED. It pinned the nine-button
+// footer — its order, and the extra space above "Denunciar maltrato". The PO
+// approved deleting that footer: every one of those buttons is a row of the
+// header's ☰ menu now (or the bell, for Notificaciones). This friction was
+// intended; the file is rewritten around what replaced the footer:
 //
-// SO THE POINT OF THESE ASSERTIONS IS TO MAKE THE COMMENTS FALSIFIABLE. A comment
-// that argues for an arrangement and is anchored in nothing is the exact defect
-// this repo keeps paying for, and writing a fresh one while removing somebody
-// else's would be a smaller version of the same thing.
+//   1. THE HOME ENDS AT "Registrar otra mascota" — in the loaded state, and no
+//      destination button follows in ANY of the three states.
+//   2. ONE DOOR PER FEATURE. No menu destination is also a home button. The only
+//      routes the home body may reach that the menu also reaches are the
+//      DOCUMENTED CONTEXTUAL SHORTCUTS below, each one drawn only when there is
+//      something to show. Pressing EVERYTHING the home draws and collecting
+//      where it goes is what makes this falsifiable — a list of labels to avoid
+//      would pass any new button with a new label.
+//   3. THE EMPTY STATE offers Reclamar ("¿Ya la registró un veterinario o un
+//      refugio?").
+//   4. THE ONE-TIME NOTICE "Lo que estaba abajo ahora está en el menú ☰" shows
+//      until closed, and once closed it stays closed (persisted locally).
 //
-// WHAT IS NOT ASSERTED HERE, deliberately: nothing reads the SOURCE of
-// `index.tsx`. A source-text fence over a JSX order would pass for any
-// rearrangement that kept the same lines, and it would pass for a `marginTop`
-// that had been overridden further down the stylesheet. Everything below is read
-// off the RENDERED tree.
-//
-// It runs under JEST. `apps` is excluded from the Vitest walk
-// (`__tests__/db-reachability.ts`), so a file written in Vitest's dialect here
-// would never run and would look like coverage.
+// Everything is read off the RENDERED tree; nothing reads the source of
+// `index.tsx`. It runs under JEST — `apps` is excluded from the Vitest walk.
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import type { MyCaseRowV1 } from "@dim/contract/api";
 
 const mockPush = jest.fn<(path: string) => void>();
 const mockFetchMyPets = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockFetchMyCases = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush }),
   // The screen reads once per mount and once per focus. The real hook needs a
-  // navigation container; the callback is simply never invoked here, which is
-  // the same number of reads the mount already performs.
-  useFocusEffect: () => undefined,
+  // navigation container; invoking the callback once on mount is the same
+  // number of reads a first focus performs.
+  useFocusEffect: (callback: () => void) => {
+    const { useEffect } = require("react");
+    useEffect(() => {
+      callback();
+    }, [callback]);
+  },
 }));
 
 jest.mock("../api/endpoints", () => ({
   fetchMyPets: (...args: unknown[]) => mockFetchMyPets(...args),
-  // The casos block (M11) reads on every focus. No open cases: the block is
-  // not drawn, and nothing this file asserts about the list moves.
-  fetchMyCases: async () => ({
-    outcome: "ok",
-    payload: {
-      payloadVersion: 1,
-      issuedAt: "2026-09-24T00:00:00.000Z",
-      staleAfter: "2026-09-24T00:01:00.000Z",
-      open: [],
-      history: { rows: [], hasMore: false },
-    },
-  }),
+  fetchMyCases: (...args: unknown[]) => mockFetchMyCases(...args),
 }));
 
-// The list now re-reads when the network comes back (B-05, `useReconnect`), and
-// the real NetInfo has no native module under jest — it crashes inside its own
-// reachability timer, several frames from anything this file is about.
+// The list re-reads when the network comes back (B-05, `useReconnect`), and the
+// real NetInfo has no native module under jest.
 jest.mock("@react-native-community/netinfo", () => ({
   __esModule: true,
   default: { addEventListener: () => () => undefined },
 }));
 
-jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
+jest.mock("../auth/session-store", () => ({
+  sessionPort: {},
+  getSessionState: () => ({ phase: "signed-in", user: { id: "owner-1" } }),
+}));
 jest.mock("../auth/useGate", () => ({ useGate: () => ({ allowed: true }) }));
 
 import MisMascotasScreen from "../../app/mascotas/index";
-import { TOP_LEVEL_DESTINATIONS } from "../ui/TopLevelNavMenu";
+import { NAV_DESTINATIONS } from "../ui/TopLevelNavMenu";
+import { HOME_MENU_NOTICE_DISMISSED_KEY, HOME_MENU_NOTICE_TEXT } from "./MovedToMenuNotice";
 
-/** An empty-but-successful list: the footer draws in every loaded state. */
-function emptyList() {
+/**
+ * THE DOCUMENTED CONTEXTUAL SHORTCUTS (the review's "Qué cambia" table, column
+ * "Atajo con contexto"). A route here may be reached from the home body AND from
+ * the menu, because on the home it carries context the menu row does not:
+ */
+const CONTEXTUAL_SHORTCUTS: Record<string, string> = {
+  "/reclamar": "the empty state's 'Reclamala con su chip o tatuaje' (0 pets only)",
+  "/casos": "'Ver todos mis casos' inside the casos block (only while a caso is open)",
+  "/transferencias": "'Esperan tu respuesta' → 'Ver N pedidos más' (only with > 3 pending)",
+};
+
+const MENU_ROUTES = new Set(NAV_DESTINATIONS.map((d) => d.route));
+const MENU_LABELS = NAV_DESTINATIONS.map((d) => d.label);
+
+function pets(count: number) {
   return {
     outcome: "ok" as const,
-    payload: { version: 1, pets: [], total: 0, truncated: false },
+    payload: {
+      version: 1,
+      pets: Array.from({ length: count }, (_, i) => ({
+        publicToken: `DIM-TEST-000${i}`,
+        name: `Mascota ${i}`,
+        species: "dog",
+        status: "active",
+        photoUrl: null,
+      })),
+      total: count,
+      truncated: false,
+    },
   };
 }
 
-/**
- * The footer's capability buttons, in the order they are RENDERED.
- *
- * DERIVED FROM `TOP_LEVEL_DESTINATIONS` since the footer renders from that
- * array now (2026-09-24 review) — a hand-typed copy here would be exactly the
- * drift that change closed. Used to filter `getAllByRole("button")` so a
- * button added to the LIST body cannot drift into this assertion and quietly
- * reorder it. (It used to omit "Tránsito" — a real gap, not a deliberate
- * filter: the label was never wrong, this list just never carried it.)
- */
-const FOOTER_LABELS = TOP_LEVEL_DESTINATIONS.map((destination) => destination.label);
+function cases(open: Partial<MyCaseRowV1>[]) {
+  return {
+    outcome: "ok" as const,
+    payload: {
+      payloadVersion: 1,
+      issuedAt: "2026-10-07T00:00:00.000Z",
+      staleAfter: "2026-10-07T00:01:00.000Z",
+      open: open.map((over) => ({
+        kind: "case_generic_open",
+        title: "Caso CAS-TEST-0001",
+        subtitle: "Episodio de custodia",
+        severity: "info",
+        since: "2026-09-01T12:00:00.000Z",
+        route: null,
+        petId: null,
+        petName: null,
+        petPhotoUrl: null,
+        needsAction: false,
+        dueAt: null,
+        ...over,
+      })),
+      history: { rows: [], hasMore: false },
+    },
+  };
+}
 
-/**
- * Every string rendered inside one node, in tree order.
- *
- * Walking the instance rather than `JSON.stringify`-ing its props is not style:
- * the props hold React's fiber, and stringifying a rendered button throws
- * `Converting circular structure to JSON`.
- */
+/** Every string rendered inside one node, in tree order. */
 function textOf(node: { children: Array<unknown> }): string {
   const parts: string[] = [];
   const walk = (child: unknown): void => {
@@ -113,146 +146,205 @@ function textOf(node: { children: Array<unknown> }): string {
   return parts.join(" ");
 }
 
+function accessibleName(node: {
+  children: Array<unknown>;
+  props?: { accessibilityLabel?: unknown };
+}): string {
+  const explicit = node.props?.accessibilityLabel;
+  return typeof explicit === "string" ? explicit : textOf(node);
+}
+
+/** Every pressable control the home body draws: buttons and links. */
+function controls() {
+  return [...screen.queryAllByRole("button"), ...screen.queryAllByRole("link")];
+}
+
 /**
- * THE ORDER AS THE TREE HOLDS IT, which is not the same as "which labels are
- * present" — and the first version of this helper made exactly that mistake.
- *
- * It mapped over `FOOTER_LABELS` and merely filtered out the missing ones, so it
- * returned that constant back no matter how the JSX was arranged. The swap
- * mutation the first test names left it **3/3 GREEN**. A fence over an ORDER
- * that never reads an order is the same defect as a stub that discards its
- * argument: every assertion standing on it asserts that the order does not
- * matter. It was caught by APPLYING the mutation, not by re-reading the code,
- * which is the only reason this file is worth anything.
- *
- * `getAllByRole("button")` returns matches in tree order, so this reads the
- * rendered arrangement. Filtered to the labels the footer owns, so a button in
- * the LIST body cannot drift in and silently reorder the expectation.
+ * Press every control the home draws, one at a time, and return every route
+ * that was pushed. Expanding a fold (CollapsibleModule) draws more controls, so
+ * this repeats until a pass finds nothing new.
  */
-function renderedFooterOrder(): string[] {
-  return screen
-    .getAllByRole("button")
-    .map((node) => FOOTER_LABELS.find((label) => textOf(node).includes(label)) ?? null)
-    .filter((label): label is string => label !== null);
-}
-
-/** Sum every `marginTop` on the ancestors of a rendered label, in points. */
-function marginAbove(label: string): number {
-  let node = screen.getByText(label).parent;
-  let total = 0;
-  while (node) {
-    const style = node.props?.style;
-    const flat: unknown[] = Array.isArray(style) ? style.flat(Number.POSITIVE_INFINITY) : [style];
-    for (const layer of flat) {
-      if (layer && typeof layer === "object" && "marginTop" in layer) {
-        const value = (layer as { marginTop?: unknown }).marginTop;
-        if (typeof value === "number") total += value;
-      }
+function pushedRoutesFromEverything(): string[] {
+  const pressed = new Set<string>();
+  for (let pass = 0; pass < 4; pass += 1) {
+    let pressedSomething = false;
+    for (const node of controls()) {
+      const name = accessibleName(node);
+      if (pressed.has(name)) continue;
+      pressed.add(name);
+      pressedSomething = true;
+      fireEvent.press(node);
     }
-    node = node.parent;
+    if (!pressedSomething) break;
   }
-  return total;
+  return mockPush.mock.calls.map(([route]) => route);
 }
 
-describe("the /mascotas footer", () => {
-  beforeEach(() => {
+describe("the end of /mascotas", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    // The notice is not what these tests are about; closed on this install.
+    await AsyncStorage.setItem(HOME_MENU_NOTICE_DISMISSED_KEY, "1");
     mockPush.mockClear();
     mockFetchMyPets.mockReset();
-    mockFetchMyPets.mockResolvedValue(emptyList());
+    mockFetchMyCases.mockReset();
+    mockFetchMyCases.mockResolvedValue(cases([]));
   });
 
-  it("puts DENUNCIAR LAST of the capability buttons, below Adoptar", async () => {
-    // THE PRODUCT DECISION, PINNED. The footer runs from what the reader is
-    // responsible for towards what they are not: Transferencias and
-    // Notificaciones are addressed to them, Mis turnos belong to their animals,
-    // Reclamar is an animal that IS theirs recorded under somebody else, Adoptar
-    // is one they may come to hold. Denunciar is where that line ENDS — it is not
-    // an act on your animals at all, it is a civic act about somebody else's, and
-    // it ends with a case file at an authority naming a person.
-    //
-    // MUTATION, APPLIED: swap the `Adoptar` and `Denunciar maltrato` blocks in
-    // `app/mascotas/index.tsx`. This goes red naming both positions.
+  it("ends at 'Registrar otra mascota' — the last control on the screen", async () => {
+    mockFetchMyPets.mockResolvedValue(pets(2));
     render(<MisMascotasScreen />);
-    await screen.findByText("Denunciar maltrato");
+    await screen.findByText("Mascota 1");
 
-    const order = renderedFooterOrder();
-    expect(order).toEqual(FOOTER_LABELS);
-    // Stated twice on purpose: the array equality above would also be satisfied
-    // by a FOOTER_LABELS somebody reordered to match a moved button, and this
-    // pair says the relationship rather than the list.
-    expect(order.indexOf("Denunciar maltrato")).toBeGreaterThan(order.indexOf("Adoptar"));
-    expect(order.indexOf("Denunciar maltrato")).toBe(order.length - 2);
+    const names = controls().map(accessibleName);
+    expect(names.at(-1)).toBe("Registrar otra mascota");
+    for (const label of MENU_LABELS) {
+      expect(names).not.toContain(label);
+    }
+    expect(screen.queryByText("Notificaciones")).toBeNull();
+    expect(screen.queryByText("Denunciar maltrato")).toBeNull();
   });
 
-  it("gives denunciar MORE space above it than any other footer button has", async () => {
-    // THE COMMENT THAT USED TO LIE. The rejected branch's comment argued "the gap
-    // between the two is bigger" and nothing in the stylesheet produced one —
-    // `styles.footer` sets a single uniform `gap` for every child, so the
-    // separation was a sentence. `styles.civicAction` is what makes it true, and
-    // this is the assertion that stops it from becoming a sentence again.
-    //
-    // A button that files a criminal allegation against a named person must not
-    // be reachable by a thumb that was aiming at the one above it.
-    //
-    // MUTATION, APPLIED: delete the `<View style={styles.civicAction}>` wrapper
-    // (or empty out `civicAction`). This goes red; the order test above stays
-    // green, which is why the two are separate.
+  it("heads the list with 'Tus mascotas' and the count", async () => {
+    mockFetchMyPets.mockResolvedValue(pets(2));
     render(<MisMascotasScreen />);
-    await screen.findByText("Denunciar maltrato");
+    await screen.findByText("Mascota 1");
 
-    const denuncia = marginAbove("Denunciar maltrato");
-    for (const label of ["Transferencias", "Notificaciones", "Mis turnos", "Adoptar"]) {
-      expect(denuncia).toBeGreaterThan(marginAbove(label));
+    expect(screen.getByText("Tus mascotas")).toBeTruthy();
+    expect(screen.getByText("2")).toBeTruthy();
+  });
+
+  it("draws no destination in the failed state either — the header is the way out", async () => {
+    mockFetchMyPets.mockResolvedValue({ outcome: "unreachable", detail: "sin red" });
+    render(<MisMascotasScreen />);
+    await screen.findByText("No pudimos conectarnos. Revisá tu conexión.");
+
+    const names = controls().map(accessibleName);
+    for (const label of MENU_LABELS) {
+      expect(names).not.toContain(label);
     }
   });
 
-  it("renders every TOP_LEVEL_DESTINATIONS entry — same label, hint, route and order the header menu uses", async () => {
-    // THE POINT OF THIS TEST (2026-09-24 review): the footer used to be
-    // hand-written JSX that happened to agree with `TOP_LEVEL_DESTINATIONS`.
-    // It now MAPS over that array, so this asserts the map is faithful rather
-    // than asserting the array against itself — every label, hint and route
-    // is read off the RENDERED tree and compared to the shared constant, and
-    // every one of them is pressed.
-    //
-    // MUTATION, APPLIED: change a label, a route or a hint in
-    // `TOP_LEVEL_DESTINATIONS` without touching this file — or change what
-    // the footer renders without touching the constant. Either goes red.
+  it("shows a skeleton, not a bare spinner, on the first read", async () => {
+    mockFetchMyPets.mockReturnValue(new Promise(() => undefined));
     render(<MisMascotasScreen />);
-    await screen.findByText("Denunciar maltrato");
 
-    expect(renderedFooterOrder()).toEqual(TOP_LEVEL_DESTINATIONS.map((d) => d.label));
+    const skeleton = screen.getByLabelText("Buscando tus mascotas…");
+    expect(skeleton.props.accessibilityRole).toBe("progressbar");
+  });
+});
 
-    for (const destination of TOP_LEVEL_DESTINATIONS) {
-      const button = screen.getByRole("button", { name: destination.label });
-      expect(button.props.accessibilityHint).toBe(destination.accessibilityHint);
-
-      mockPush.mockClear();
-      fireEvent.press(screen.getByText(destination.label));
-      expect(mockPush).toHaveBeenCalledTimes(1);
-      expect(mockPush).toHaveBeenCalledWith(destination.route);
-    }
+describe("one door per feature", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(HOME_MENU_NOTICE_DISMISSED_KEY, "1");
+    mockPush.mockClear();
+    mockFetchMyPets.mockReset();
+    mockFetchMyCases.mockReset();
   });
 
-  it("routes denunciar to /denunciar and nowhere else", async () => {
-    // The route is registered in `app/_layout.tsx` under this exact name; a
-    // button pointing anywhere else would open a screen with the wrong header or
-    // no screen at all.
-    //
-    // MUTATION, APPLIED: point the button at `ROUTES.adoptar`. Red.
+  const STATES: Array<[string, number, Partial<MyCaseRowV1>[]]> = [
+    ["a loaded list with open casos", 2, [{ needsAction: true }, { needsAction: false }]],
+    ["a loaded list with nothing open", 3, []],
+    ["the empty state", 0, []],
+  ];
+
+  it.each(STATES)(
+    "on %s, every menu route the home reaches is a documented shortcut",
+    async (_state, petCount, openCases) => {
+      mockFetchMyPets.mockResolvedValue(pets(petCount));
+      mockFetchMyCases.mockResolvedValue(cases(openCases));
+      render(<MisMascotasScreen />);
+      await screen.findByText(petCount === 0 ? "Registrar una mascota" : "Mascota 0");
+
+      // No home control is NAMED like a menu row …
+      const names = controls().map(accessibleName);
+      for (const label of MENU_LABELS) {
+        expect(names).not.toContain(label);
+      }
+
+      // … and no home control LEADS where a menu row leads, except the shortcuts.
+      const overlap = pushedRoutesFromEverything().filter((route) => MENU_ROUTES.has(route));
+      for (const route of overlap) {
+        expect(Object.keys(CONTEXTUAL_SHORTCUTS)).toContain(route);
+      }
+    },
+  );
+
+  it("non-vacuity: the sweep does reach the shortcuts it allows", async () => {
+    mockFetchMyPets.mockResolvedValue(pets(0));
+    mockFetchMyCases.mockResolvedValue(cases([{ needsAction: true }]));
     render(<MisMascotasScreen />);
-    await screen.findByText("Denunciar maltrato");
+    await screen.findByText("Registrar una mascota");
 
-    // RE-QUERIED, NOT THE `findByText` HANDLE (2026-09-24 review fix). The
-    // destinations footer now renders in the LOADING phase too (see
-    // `index.tsx` and `TopLevelNavMenu.tsx`'s `DestinationsFooter`), so
-    // "Denunciar maltrato" is on screen before `fetchMyPets` resolves and
-    // `findByText` was returning a handle into that transient tree — which
-    // React then unmounted wholesale when the screen swapped to its `ready`
-    // arm, so pressing the stale handle hit nothing. `getByText` right before
-    // the press reads the CURRENT tree instead, same as the loop two tests up.
-    fireEvent.press(screen.getByText("Denunciar maltrato"));
+    const pushed = pushedRoutesFromEverything();
+    expect(pushed).toContain("/reclamar");
+    expect(pushed).toContain("/casos");
+    expect(pushed).toContain("/alta");
+  });
+});
 
-    expect(mockPush).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith("/denunciar");
+describe("the empty state", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(HOME_MENU_NOTICE_DISMISSED_KEY, "1");
+    mockPush.mockClear();
+    mockFetchMyPets.mockReset();
+    mockFetchMyPets.mockResolvedValue(pets(0));
+    mockFetchMyCases.mockReset();
+    mockFetchMyCases.mockResolvedValue(cases([]));
+  });
+
+  it("offers Reclamar for an animal a vet or a shelter already registered", async () => {
+    render(<MisMascotasScreen />);
+    expect(await screen.findByText("¿Ya la registró un veterinario o un refugio?")).toBeTruthy();
+
+    fireEvent.press(screen.getByRole("link", { name: "Reclamala con su chip o tatuaje" }));
+    expect(mockPush).toHaveBeenCalledWith("/reclamar");
+  });
+
+  it("draws no 'Tus mascotas' eyebrow over an empty list", async () => {
+    render(<MisMascotasScreen />);
+    await screen.findByText("Registrar una mascota");
+    expect(screen.queryByText("Tus mascotas")).toBeNull();
+  });
+});
+
+describe("the one-time notice 'Lo que estaba abajo ahora está en el menú ☰'", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    mockPush.mockClear();
+    mockFetchMyPets.mockReset();
+    mockFetchMyPets.mockResolvedValue(pets(1));
+    mockFetchMyCases.mockReset();
+    mockFetchMyCases.mockResolvedValue(cases([]));
+  });
+
+  it("shows on a fresh install, closes, and is remembered", async () => {
+    render(<MisMascotasScreen />);
+    expect(await screen.findByText(HOME_MENU_NOTICE_TEXT)).toBeTruthy();
+
+    fireEvent.press(screen.getByRole("link", { name: "Entendido" }));
+    expect(screen.queryByText(HOME_MENU_NOTICE_TEXT)).toBeNull();
+    await waitFor(async () => {
+      expect(await AsyncStorage.getItem(HOME_MENU_NOTICE_DISMISSED_KEY)).toBe("1");
+    });
+  });
+
+  it("never comes back once closed — a new mount does not draw it", async () => {
+    await AsyncStorage.setItem(HOME_MENU_NOTICE_DISMISSED_KEY, "1");
+    render(<MisMascotasScreen />);
+    await screen.findByText("Mascota 0");
+    // Let the storage read settle before asserting its absence.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByText(HOME_MENU_NOTICE_TEXT)).toBeNull();
+  });
+
+  it("is a neutral notice, not an alert", async () => {
+    render(<MisMascotasScreen />);
+    await screen.findByText(HOME_MENU_NOTICE_TEXT);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

@@ -1,23 +1,25 @@
-// The header menu — U-1 (M2, Samsung J7 2016 / Android 8). See
-// `TopLevelNavMenu.tsx`'s own header for the finding and the decision.
+// The header menu, grouped (inicio-app-rediseno, PO 2026-10-07). See
+// `TopLevelNavMenu.tsx`'s own header for the decision.
 //
-// WHAT THIS FILE DOES NOT DO: render `app/_layout.tsx`. That file evaluates
-// Sentry, the push adapters and the image-picker adapter at MODULE SCOPE
-// specifically because each one "throws in a process that has none" (see its
-// own comments) — no test in this app imports it, and this one does not
-// either. Instead:
-//   · `HeaderMenuButton` is exercised directly, the same way every other
-//     component test in this app exercises a component that is not a route.
-//   · The wiring itself — that `_layout.tsx` actually hands this component to
-//     `headerRight` for both screens — is checked by reading the file's
-//     source, the same technique `__tests__/mobile-screen-titles.test.ts`
-//     already uses at the root for this exact file's registrations.
+// THIS FILE PINS THE WHOLE MENU ON PURPOSE. The list used to be nine flat rows
+// copied from the home's footer; it is now the ONLY door to those destinations,
+// in four groups, and moving a row between groups — or adding one — is a design
+// decision. So the expected sections are written out here, by hand, and a
+// change to `NAV_SECTIONS` that does not also change this file goes red. That
+// friction is the point (R5 of the review).
+//
+// WHAT THIS FILE DOES NOT DO: render `app/_layout.tsx`, which evaluates Sentry
+// and the native adapters at module scope. The wiring — that `_layout.tsx`
+// hands `HeaderActions` to `headerRight` on both screens — is checked by reading
+// the file's source, the technique `__tests__/mobile-screen-titles.test.ts`
+// uses for the same file.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, within } from "@testing-library/react-native";
+import { Dimensions, ScrollView } from "react-native";
 
 const mockPush = jest.fn<(path: string) => void>();
 
@@ -25,38 +27,77 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
-// A MUTABLE GATE, the same shape `useGate()` itself returns. Tests default it
-// to `allowed: true` in `beforeEach` and flip it to exercise the "hidden while
-// the gate refuses" case — see `HeaderMenuButton`'s own comment for why it
-// reads this hook at all.
+// A MUTABLE GATE, the same shape `useGate()` itself returns.
 const mockGate: { current: { allowed: boolean } } = { current: { allowed: true } };
 jest.mock("../auth/useGate", () => ({ useGate: () => mockGate.current }));
 
-import { HeaderMenuButton, TOP_LEVEL_DESTINATIONS } from "./TopLevelNavMenu";
+import { HeaderMenuButton, NAV_DESTINATIONS, NAV_SECTIONS } from "./TopLevelNavMenu";
 
-/**
- * THE SAME NINE `app/mascotas/index.tsx`'s footer renders, in its own
- * order — copied here (not imported from that screen) so a change to EITHER
- * side has to pass through a human reading both, the same non-vacuity
- * argument `MisMascotasFooter.test.tsx` makes for its own `FOOTER_LABELS`.
- */
-const EXPECTED_DESTINATIONS = [
-  { label: "Transferencias", route: "/transferencias" },
-  { label: "Tránsito", route: "/cuenta/transito" },
-  { label: "Notificaciones", route: "/notificaciones" },
-  { label: "Mis turnos", route: "/turnos" },
-  { label: "Reclamar una mascota", route: "/reclamar" },
-  { label: "Adoptar", route: "/adoptar" },
-  { label: "Mis denuncias", route: "/denuncias" },
-  { label: "Denunciar maltrato", route: "/denunciar" },
-  { label: "Ajustes", route: "/ajustes" },
+/** The approved menu (section c of the review), written out by hand. */
+const EXPECTED_SECTIONS = [
+  {
+    title: "Mis mascotas",
+    rows: [
+      { label: "Transferencias", route: "/transferencias" },
+      { label: "Reclamar una mascota", route: "/reclamar" },
+      { label: "Tránsito", route: "/cuenta/transito" },
+    ],
+  },
+  {
+    title: "Turnos y casos",
+    rows: [
+      { label: "Mis turnos", route: "/turnos" },
+      { label: "Mis casos", route: "/casos" },
+    ],
+  },
+  {
+    title: "Comunidad",
+    rows: [
+      { label: "Adoptar", route: "/adoptar" },
+      { label: "Denuncias", route: "/denuncias" },
+    ],
+  },
+  {
+    title: "Cuenta",
+    rows: [{ label: "Ajustes", route: "/ajustes" }],
+  },
 ];
 
-describe("TOP_LEVEL_DESTINATIONS", () => {
-  it("is the footer's own nine destinations, in the footer's own order (non-vacuity)", () => {
-    expect(TOP_LEVEL_DESTINATIONS.map((d) => ({ label: d.label, route: d.route }))).toEqual(
-      EXPECTED_DESTINATIONS,
-    );
+const EXPECTED_ROWS = EXPECTED_SECTIONS.flatMap((section) => section.rows);
+
+function openMenu() {
+  render(<HeaderMenuButton />);
+  fireEvent.press(screen.getByLabelText("Abrir menú de navegación"));
+}
+
+describe("NAV_SECTIONS", () => {
+  it("is the approved menu: four groups, eight rows, in this order", () => {
+    expect(
+      NAV_SECTIONS.map((section) => ({
+        title: section.title,
+        rows: section.destinations.map((d) => ({ label: d.label, route: d.route })),
+      })),
+    ).toEqual(EXPECTED_SECTIONS);
+    expect(NAV_DESTINATIONS).toHaveLength(8);
+  });
+
+  it("has one row per route — no destination reachable twice from the menu", () => {
+    const routes = NAV_DESTINATIONS.map((d) => d.route);
+    expect(new Set(routes).size).toBe(routes.length);
+  });
+
+  it("does not carry Notificaciones (the bell) nor Registrar (the end of the home)", () => {
+    const labels = NAV_DESTINATIONS.map((d) => d.label);
+    expect(labels).not.toContain("Notificaciones");
+    expect(NAV_DESTINATIONS.map((d) => d.route)).not.toContain("/notificaciones");
+    expect(labels.some((label) => /registrar/i.test(label))).toBe(false);
+  });
+
+  it("gives every row an icon, and a caption or a hint for a screen reader", () => {
+    for (const destination of NAV_DESTINATIONS) {
+      expect(destination.icon).toBeDefined();
+      expect(destination.caption ?? destination.accessibilityHint).toBeTruthy();
+    }
   });
 });
 
@@ -66,11 +107,15 @@ describe("HeaderMenuButton", () => {
     mockGate.current = { allowed: true };
   });
 
-  it("renders a 48dp, Spanish-labelled trigger", () => {
+  it("renders a 48dp, Spanish-labelled trigger whose hint no longer enumerates nine rows", () => {
     render(<HeaderMenuButton />);
 
     const trigger = screen.getByLabelText("Abrir menú de navegación");
     expect(trigger.props.accessibilityRole).toBe("button");
+    // The old hint read out the nine footer labels one by one. Pinned so it
+    // cannot drift back into a list that no longer matches the menu.
+    expect(trigger.props.accessibilityHint).not.toMatch(/Notificaciones/);
+    expect(trigger.props.accessibilityHint).toMatch(/cuatro grupos/);
 
     const flat = ([] as unknown[]).concat(trigger.props.style);
     const sized = flat.find(
@@ -81,54 +126,66 @@ describe("HeaderMenuButton", () => {
     expect(sized?.minWidth).toBeGreaterThanOrEqual(48);
   });
 
-  it("lists every top-level destination once opened", () => {
-    render(<HeaderMenuButton />);
+  it("draws the four group titles as headers, in order", () => {
+    openMenu();
+    const headers = screen.getAllByRole("header").map((node) => node.props.children);
+    expect(headers).toEqual(EXPECTED_SECTIONS.map((section) => section.title));
+  });
 
-    fireEvent.press(screen.getByLabelText("Abrir menú de navegación"));
-
-    for (const destination of EXPECTED_DESTINATIONS) {
-      expect(screen.getByText(destination.label)).toBeTruthy();
+  it("draws every row under its own group, with its caption", () => {
+    openMenu();
+    for (const section of NAV_SECTIONS) {
+      for (const destination of section.destinations) {
+        const row = screen.getByRole("button", { name: destination.label });
+        expect(row.props.accessibilityHint).toBe(
+          destination.caption ?? destination.accessibilityHint,
+        );
+        if (destination.caption !== undefined) {
+          expect(within(row).getByText(destination.caption)).toBeTruthy();
+        }
+      }
     }
   });
 
   it("keeps every row its OWN reachable button — the sheet is a container, not one opaque element", () => {
-    // THE ACCESSIBILITY FIX THIS PINS: the sheet used to be a `Pressable`
-    // wrapping every row, which VoiceOver reads as a single element — a
-    // screen-reader user landed on one unlabelled node instead of eight
-    // named buttons. `accessible={false}` on the sheet's container makes it
-    // transparent to the accessibility tree again, and `getAllByRole` is
-    // what proves each row still resolves on its own rather than only the
-    // container answering to the role.
-    render(<HeaderMenuButton />);
-    fireEvent.press(screen.getByLabelText("Abrir menú de navegación"));
-
+    openMenu();
     const buttons = screen.getAllByRole("button").map((node) => node.props.accessibilityLabel);
-    for (const destination of EXPECTED_DESTINATIONS) {
-      expect(buttons).toContain(destination.label);
+    for (const row of EXPECTED_ROWS) {
+      expect(buttons).toContain(row.label);
     }
-    // The trigger and the backdrop are buttons too, but not sheet ROWS —
-    // nine rows plus those two is the honest count, not "at least nine".
-    expect(buttons).toHaveLength(EXPECTED_DESTINATIONS.length + 2);
+    // Eight rows plus the trigger and the backdrop — the honest count.
+    expect(buttons).toHaveLength(EXPECTED_ROWS.length + 2);
+  });
+
+  it("caps the sheet at 85% of the window and scrolls past that", () => {
+    openMenu();
+    const scroll = screen.UNSAFE_getByType(ScrollView);
+    const flat = ([] as unknown[]).concat(scroll.props.style);
+    const capped = flat.find(
+      (layer): layer is { maxHeight: number } =>
+        typeof layer === "object" && layer !== null && "maxHeight" in layer,
+    );
+    expect(capped?.maxHeight).toBeCloseTo(Dimensions.get("window").height * 0.85);
   });
 
   it("navigates to the pressed destination and closes the sheet", () => {
-    render(<HeaderMenuButton />);
-
-    fireEvent.press(screen.getByLabelText("Abrir menú de navegación"));
-    fireEvent.press(screen.getByText("Denunciar maltrato"));
+    openMenu();
+    fireEvent.press(screen.getByText("Denuncias"));
 
     expect(mockPush).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith("/denunciar");
-    // The sheet closed: the row is gone, and so is every other one — proof
-    // this is the SHEET closing rather than that one row disappearing.
-    expect(screen.queryByText("Denunciar maltrato")).toBeNull();
+    expect(mockPush).toHaveBeenCalledWith("/denuncias");
+    expect(screen.queryByText("Denuncias")).toBeNull();
     expect(screen.queryByText("Ajustes")).toBeNull();
   });
 
-  it("closes without navigating when the backdrop is pressed", () => {
-    render(<HeaderMenuButton />);
+  it.each(EXPECTED_ROWS)("routes $label to $route", ({ label, route }) => {
+    openMenu();
+    fireEvent.press(screen.getByRole("button", { name: label }));
+    expect(mockPush).toHaveBeenCalledWith(route);
+  });
 
-    fireEvent.press(screen.getByLabelText("Abrir menú de navegación"));
+  it("closes without navigating when the backdrop is pressed", () => {
+    openMenu();
     fireEvent.press(screen.getByLabelText("Cerrar menú"));
 
     expect(mockPush).not.toHaveBeenCalled();
@@ -136,18 +193,9 @@ describe("HeaderMenuButton", () => {
   });
 
   it("ignores a second press on the same row during the fade-out (double-tap guard)", () => {
-    // THE BUG: RN's `Modal` does not unmount its content the instant `visible`
-    // goes false — the fade-out plays first — so a row pressed twice in quick
-    // succession could call `router.push` with the same route twice. Both
-    // presses land on the SAME captured `onPress` closure here (the row is
-    // never re-queried between them), which is exactly the shape a rushed
-    // double-tap takes.
-    //
     // MUTATION, APPLIED: drop the `navigatedRef` guard in `selectDestination`.
     // This goes red at 2 calls.
-    render(<HeaderMenuButton />);
-    fireEvent.press(screen.getByLabelText("Abrir menú de navegación"));
-
+    openMenu();
     const row = screen.getByText("Ajustes");
     fireEvent.press(row);
     fireEvent.press(row);
@@ -156,10 +204,6 @@ describe("HeaderMenuButton", () => {
   });
 
   it("renders nothing while the session gate refuses (Splash, unverified, signed-out)", () => {
-    // `headerRight` mounts before the SCREEN's own `useGate()` has decided
-    // whether to draw the real page — see the component's own comment. A
-    // hamburger over Splash or `UnverifiedScreen` would offer eight
-    // destinations from a session that may not reach any of them.
     mockGate.current = { allowed: false };
     render(<HeaderMenuButton />);
 
@@ -167,25 +211,32 @@ describe("HeaderMenuButton", () => {
   });
 });
 
-describe("the header menu is wired on both screens the footer used to be the only way out of", () => {
+describe("the bell + menu are wired on both screens that carry the menu", () => {
   // Source-read, not a render of `_layout.tsx` — see the file header for why.
   const layoutSource = readFileSync(join(__dirname, "..", "..", "app", "_layout.tsx"), "utf8");
 
-  it("imports HeaderMenuButton from this module", () => {
+  it("imports HeaderActions and nothing of the old header button", () => {
     expect(layoutSource).toMatch(
-      /import\s*\{\s*HeaderMenuButton\s*\}\s*from\s*"\.\.\/src\/ui\/TopLevelNavMenu"/,
+      /import\s*\{\s*HeaderActions\s*\}\s*from\s*"\.\.\/src\/ui\/HeaderActions"/,
     );
+    expect(layoutSource).not.toMatch(/HeaderMenuButton/);
   });
 
   it.each(["mascotas/index", "mascotas/[publicToken]"])(
-    "gives %s a headerRight that renders HeaderMenuButton",
+    "gives %s a headerRight that renders HeaderActions",
     (routeName) => {
       const escaped = routeName.replace(/[[\]]/g, "\\$&");
       const screenMatch = layoutSource.match(
         new RegExp(`<Stack\\.Screen\\s+name="${escaped}"[\\s\\S]*?/>`),
       );
       expect(screenMatch).not.toBeNull();
-      expect(screenMatch?.[0]).toMatch(/headerRight:\s*\(\)\s*=>\s*<HeaderMenuButton\s*\/>/);
+      expect(screenMatch?.[0]).toMatch(/headerRight:\s*\(\)\s*=>\s*<HeaderActions\s*\/>/);
     },
   );
+
+  it("titles the denuncias list 'Denuncias', the menu row's own name", () => {
+    expect(layoutSource).toMatch(
+      /<Stack\.Screen name="denuncias\/index" options=\{\{ title: "Denuncias" \}\} \/>/,
+    );
+  });
 });

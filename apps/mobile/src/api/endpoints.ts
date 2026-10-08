@@ -84,6 +84,7 @@ import {
   MY_PRIVACY_PAYLOAD_VERSION,
   MY_PROFILE_PAYLOAD_VERSION,
   MY_TRANSFERS_PAYLOAD_VERSION,
+  MY_UNREAD_NOTIFICATIONS_PAYLOAD_VERSION,
   MY_WELFARE_REPORTS_PAYLOAD_VERSION,
   MY_WELFARE_REPORT_DETAIL_PAYLOAD_VERSION,
   type MeV1,
@@ -99,6 +100,7 @@ import {
   type MyProfileV1,
   type MySubjectDataExportV1,
   type MyTransfersV1,
+  type MyUnreadNotificationsV1,
   type MyWelfareReportDetailV1,
   type MyWelfareReportsV1,
   NOTIFICATION_TARGET_PAYLOAD_VERSION,
@@ -1445,6 +1447,27 @@ export function fetchMyNotifications(
     {
       path: `/api/v1/me/notifications${suffix}`,
       expectedPayloadVersion: MY_NOTIFICATIONS_PAYLOAD_VERSION,
+    },
+    session,
+  );
+}
+
+/**
+ * `GET /me/notifications/unread-count` — the number on the header bell, and
+ * nothing else (inicio-app-rediseno, PO 2026-10-07).
+ *
+ * The inbox read carries the same figure beside a page of up to a hundred rows;
+ * this one is the aggregate alone, so re-reading it on every focus of the two
+ * screens that carry the bell costs one indexed count, not an inbox. A failure
+ * is the CALLER's to swallow — see `use-unread-count.ts`: no number, never a 0.
+ */
+export function fetchMyUnreadNotificationCount(
+  session: SessionPort,
+): Promise<ApiResult<MyUnreadNotificationsV1>> {
+  return apiRequest<MyUnreadNotificationsV1>(
+    {
+      path: "/api/v1/me/notifications/unread-count",
+      expectedPayloadVersion: MY_UNREAD_NOTIFICATIONS_PAYLOAD_VERSION,
     },
     session,
   );

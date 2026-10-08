@@ -1,39 +1,60 @@
-// The persistent top-level nav — U-1 (M2, Samsung J7 2016 / Android 8).
+// The app's menu — the ☰ in the native header (inicio-app-rediseno, PO 2026-10-07).
 //
-// THE PROBLEM. `/mascotas` (the app's most-opened screen) lists every
-// top-level destination — Transferencias, Tránsito, Notificaciones, Mis
-// turnos, Reclamar, Adoptar, Denunciar, Ajustes — as a FOOTER, below every pet
-// card. On a small screen with several pets registered, reaching any of them
-// meant scrolling past the whole list first. From the pet detail screen there
-// was no way to any of them at all except the hardware back button.
+// WHAT IT REPLACED. Until this change `/mascotas` ended in nine full-width
+// buttons of identical weight (Transferencias, Tránsito, Notificaciones, Mis
+// turnos, Reclamar, Adoptar, Mis denuncias, Denunciar maltrato, Ajustes), and
+// this menu was "the second, scroll-proof door to the same eight rooms" — the
+// same nine rows, flat, in the same order. Two doors to every room and neither
+// one ordered. The PO approved the redesign in
+// `dim-interno:docs/reviews/2026-10-home-app/rediseno-home.html`:
 //
-// THE DECISION (PO, accepted default): a header menu. A button that sits in
-// the native stack header — ABOVE the scrollable body, so it never moves when
-// the list scrolls — opens a sheet naming every destination at once. Wired in
-// `app/_layout.tsx`'s `headerRight` for `mascotas/index` and
-// `mascotas/[publicToken]`, the two screens the footer used to be the only way
-// out of.
+//   · THE ☰ IS THE ONLY DOOR to what is used now and then. The footer is gone
+//     from the home (`DestinationsFooter` and its `civicAction` spacing were
+//     deleted with it — the spacing was a patch over stacking a criminal
+//     allegation under eight look-alike buttons, a problem a grouped list of
+//     rows does not have).
+//   · FOUR GROUPS, each with a header TalkBack reads as one
+//     (`accessibilityRole="header"`): Mis mascotas, Turnos y casos, Comunidad,
+//     Cuenta. Every row has an icon, and a caption where the name alone does not
+//     say what is behind it (the old `accessibilityHint`, now visible).
+//   · NOTIFICACIONES LEFT THE MENU. It is the bell beside the ☰ now, with an
+//     unread badge (`HeaderActions.tsx`).
+//   · "MIS CASOS" IS A ROW. The open-cases block on the home is drawn only while
+//     something is open, and its "Ver todos mis casos" link was the only way to
+//     `/casos` — so with nothing open, the history of closed cases had no door.
+//   · "DENUNCIAS" IS ONE ROW, the list, as the web's OWNER_NAV names it (PO
+//     2026-07-03); filing a new one is the primary action at the top of that list.
+//   · "REGISTRAR" IS NOT HERE: its door is the end of the home's list.
 //
-// THE LIST HAS ONE HOME. `TOP_LEVEL_DESTINATIONS` used to be duplicated by
-// hand in `app/mascotas/index.tsx`'s footer — same labels, same routes, same
-// hints, copied rather than shared — which is exactly the shape a silent
-// drift takes: nothing stops one copy from changing without the other. That
-// footer now MAPS over this array (see its own file), so there is one list to
-// read and one place to change it. The footer stays (nothing reachable before
-// is reachable one way fewer now); this menu is the second, scroll-proof door
-// to the same eight rooms.
+// ONE SOURCE. `NAV_SECTIONS` is the only list of destinations in the app — it
+// replaced `TOP_LEVEL_DESTINATIONS` — so a destination added here has exactly
+// one place to appear and nothing to drift from (AGENTS rule 7's principle).
 //
 // A HAMBURGER, NOT "ellipsis". `OwnerFace.tsx`'s "Más" button already uses
-// `Icon name="ellipsis"` for a DIFFERENT menu — this screen's own actions
-// (compartir, cuidado, credencial…). Two buttons meaning two different things
-// must not wear the same glyph, especially when both can be on screen at
-// once (the pet detail screen has both). Three plain bars, drawn with the
-// app's own ink colour, cost no new dependency and no new entry in the
-// shared `@dim/contract/icons` vocabulary — which the web does not carry this
-// button at all, so there is no verbatim web glyph to follow (see that
-// table's own header).
+// `Icon name="ellipsis"` for a DIFFERENT menu — the pet screen's own actions.
+// Two buttons meaning two different things must not wear the same glyph,
+// especially when both can be on screen at once (the pet screen has both).
+//
+// THE ICONS ARE EXPLICIT `lucide-react-native` IMPORTS, the way
+// `HeaderBackButton.tsx` imports its chevron — not entries in the shared
+// `@dim/contract/icons` table, which names the WEB's pet-profile vocabulary and
+// carries nothing for app navigation. lucide-react-native is JS over the
+// already-linked react-native-svg, so these imports do not move the native
+// fingerprint (see `Icon.tsx`'s header).
 
 import { useRouter } from "expo-router";
+import {
+  ArrowLeftRight,
+  Calendar,
+  ChevronRight,
+  Flag,
+  Folder,
+  Heart,
+  Home,
+  type LucideIcon,
+  ScanLine,
+  User,
+} from "lucide-react-native";
 import { useCallback, useRef, useState } from "react";
 import {
   Modal,
@@ -47,80 +68,104 @@ import {
 
 import { useGate } from "../auth/useGate";
 import { FONTS } from "./fonts";
-import { SecondaryButton, pressedOpacity } from "./kit";
+import { pressedOpacity } from "./kit";
 import { ROUTES } from "./routes";
-import { COLORS, LABEL_TRACKING_EM, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "./theme";
+import { COLORS, LABEL_TRACKING_EM, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "./theme";
 
-export type TopLevelDestination = {
+export type NavDestination = {
   label: string;
   route: string;
+  /** Drawn under the label, and read as the row's hint. Only where the name alone is not enough. */
+  caption?: string;
+  /** Read by a screen reader when there is no caption to read instead. */
   accessibilityHint?: string;
-  /**
-   * THE ONE ITEM THAT NEEDS EXTRA UI THE SHEET DOESN'T. `app/mascotas/
-   * index.tsx`'s footer wraps "Denunciar maltrato" in `styles.civicAction`
-   * for more space above it than any other button gets — a button that files
-   * a criminal allegation must not be reachable by a thumb aiming at the one
-   * above it. The header sheet does not need this: a short row list has no
-   * "aiming at the wrong button" risk the way eight stacked full-width
-   * buttons do. Extending the type (rather than the footer special-casing a
-   * label string) is what lets the footer stay data-driven.
-   */
-  civicAction?: boolean;
+  icon: LucideIcon;
+};
+
+export type NavSection = {
+  title: string;
+  destinations: readonly NavDestination[];
 };
 
 /**
- * THE TOP-LEVEL DESTINATIONS (nine since M16 added Mis denuncias), in the order
- * `app/mascotas/index.tsx`'s footer has always used — see that file for why
- * Denunciar sits last and Tránsito sits beside Transferencias. Mis denuncias
- * sits right above Denunciar: the list of what you filed beside the act of
- * filing, and `civicAction`'s extra space still falls between the two. This is the ONE array both the footer
- * and this menu render from now; a destination added here appears in both
- * without anyone remembering to copy it twice.
+ * EVERY DESTINATION OF THE MENU, grouped — the order and the words are the
+ * PO-approved design (section c of the review). Eight rows in four groups.
  */
-export const TOP_LEVEL_DESTINATIONS: readonly TopLevelDestination[] = [
+export const NAV_SECTIONS: readonly NavSection[] = [
   {
-    label: "Transferencias",
-    route: ROUTES.transferencias,
-    accessibilityHint: "Propuestas de transferencia recibidas y enviadas.",
+    title: "Mis mascotas",
+    destinations: [
+      {
+        label: "Transferencias",
+        route: ROUTES.transferencias,
+        caption: "Recibidas, enviadas y pedidos de cuidado",
+        icon: ArrowLeftRight,
+      },
+      {
+        label: "Reclamar una mascota",
+        route: ROUTES.reclamar,
+        caption: "Si ya la registraron por chip o tatuaje",
+        icon: ScanLine,
+      },
+      {
+        label: "Tránsito",
+        route: ROUTES.transito,
+        caption: "Si cuidás animales de un refugio",
+        icon: Home,
+      },
+    ],
   },
   {
-    label: "Tránsito",
-    route: ROUTES.transito,
-    accessibilityHint: "Propuestas de tránsito, y las mascotas que cuidás hoy.",
+    title: "Turnos y casos",
+    destinations: [
+      {
+        label: "Mis turnos",
+        route: ROUTES.turnos,
+        accessibilityHint: "Turnos reservados, y el código de check-in de cada uno.",
+        icon: Calendar,
+      },
+      {
+        label: "Mis casos",
+        route: ROUTES.casos,
+        caption: "Abiertos y cerrados",
+        icon: Folder,
+      },
+    ],
   },
   {
-    label: "Notificaciones",
-    route: ROUTES.notificaciones,
-    accessibilityHint: "Avisos sobre tus mascotas y tu cuenta.",
+    title: "Comunidad",
+    destinations: [
+      {
+        label: "Adoptar",
+        route: ROUTES.adoptar,
+        caption: "Refugios verificados y tus postulaciones",
+        icon: Heart,
+      },
+      {
+        label: "Denuncias",
+        route: ROUTES.misDenuncias,
+        caption: "Denunciar maltrato y seguir las tuyas",
+        icon: Flag,
+      },
+    ],
   },
   {
-    label: "Mis turnos",
-    route: ROUTES.turnos,
-    accessibilityHint: "Turnos reservados, y el código de check-in de cada uno.",
+    title: "Cuenta",
+    destinations: [
+      {
+        label: "Ajustes",
+        route: ROUTES.ajustes,
+        caption: "Tus datos, avisos al celular, cerrar sesión",
+        icon: User,
+      },
+    ],
   },
-  {
-    label: "Reclamar una mascota",
-    route: ROUTES.reclamar,
-    accessibilityHint: "Si tu mascota ya está registrada por su microchip o su tatuaje.",
-  },
-  {
-    label: "Adoptar",
-    route: ROUTES.adoptar,
-    accessibilityHint: "Mascotas publicadas por refugios verificados.",
-  },
-  {
-    label: "Mis denuncias",
-    route: ROUTES.misDenuncias,
-    accessibilityHint: "Las denuncias que enviaste con tu cuenta, y en qué estado está cada una.",
-  },
-  {
-    label: "Denunciar maltrato",
-    route: ROUTES.denunciar,
-    accessibilityHint: "Denunciar maltrato o abandono de un animal ante la autoridad.",
-    civicAction: true,
-  },
-  { label: "Ajustes", route: ROUTES.ajustes },
 ];
+
+/** Every destination, flattened in menu order. For tests and for the one-door rule. */
+export const NAV_DESTINATIONS: readonly NavDestination[] = NAV_SECTIONS.flatMap(
+  (section) => section.destinations,
+);
 
 /** Three bars — see the file header for why this is not `Icon name="ellipsis"`. */
 function HamburgerGlyph() {
@@ -134,20 +179,15 @@ function HamburgerGlyph() {
 }
 
 /**
- * The header button + the sheet it opens. One instance is enough for a
- * screen — see `app/_layout.tsx`'s `headerRight` for `mascotas/index` and
- * `mascotas/[publicToken]`.
+ * The header button + the sheet it opens. Rendered by `HeaderActions`, beside
+ * the bell, on `mascotas/index` and `mascotas/[publicToken]`.
  *
  * GATED, LIKE THE SCREEN ITS OWN HEADER SITS ON. `headerRight` is the native
- * stack header's, not the screen body's — react-navigation draws it the
- * moment the route mounts, before `mascotas/index.tsx`'s own `useGate()`
- * decides whether to render Splash, `UnverifiedScreen` or the real list. Left
- * unguarded, the hamburger sat over all three: a person mid-splash, or
- * offline with an unverified session, saw a menu into eight screens their
- * session may not even reach. Calling the SAME hook here and rendering
- * nothing when it refuses is cheap — `useGate` reads a synced store, it does
- * not fetch — and it is the one way this component can know what the screen
- * beneath it knows.
+ * stack header's, not the screen body's — react-navigation draws it the moment
+ * the route mounts, before the screen's own `useGate()` decides whether to
+ * render Splash, `UnverifiedScreen` or the real list. Rendering nothing when the
+ * same hook refuses is cheap (it reads a synced store, it does not fetch) and is
+ * the one way this component can know what the screen beneath it knows.
  */
 export function HeaderMenuButton() {
   const gate = useGate();
@@ -159,12 +199,11 @@ export function HeaderMenuButton() {
 
   // THE DOUBLE-TAP GUARD. `Modal`'s `visible={false}` does not unmount its
   // content the instant this component asks it to — the fade-out plays first,
-  // and RN's own `Modal.js` keeps `isRendered` (hence the rows) mounted until
-  // the native dismiss fires. A second tap landing on the same row during
-  // that window called `router.push` a second time with the SAME route. The
-  // ref (not state) is deliberate: it must read the CURRENT value inside a
-  // `Pressable.onPress` closure created at the previous render, which a
-  // `useState` value captured by that same closure cannot do.
+  // and RN's own `Modal.js` keeps the rows mounted until the native dismiss
+  // fires. A second tap landing on the same row during that window called
+  // `router.push` a second time with the SAME route. A ref (not state), because
+  // it must read the CURRENT value inside a closure created at the previous
+  // render.
   const navigatedRef = useRef(false);
 
   const openMenu = useCallback(() => {
@@ -189,7 +228,7 @@ export function HeaderMenuButton() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Abrir menú de navegación"
-        accessibilityHint="Lista Transferencias, Tránsito, Notificaciones, Mis turnos, Reclamar, Adoptar, Mis denuncias, Denunciar y Ajustes."
+        accessibilityHint="Transferencias, turnos, casos, adopción, denuncias y ajustes, en cuatro grupos."
         onPress={openMenu}
         style={styles.trigger}
       >
@@ -197,27 +236,14 @@ export function HeaderMenuButton() {
       </Pressable>
 
       <Modal animationType="fade" onRequestClose={close} transparent visible={open}>
-        {/* THE BACKDROP IS A SIBLING OF THE SHEET, not its wrapper. It used to
-            wrap the sheet, which made VoiceOver read the whole overlay —
-            backdrop AND every row inside it — as ONE opaque element, and left
-            TalkBack landing on an unlabelled node first. An absolute-fill
-            sibling closes the sheet on its own tap (RN's touch dispatch gives
-            the touch to whichever view is drawn on top at that point, and the
-            sheet — rendered after, so painted over the backdrop — wins on its
-            own rectangle) without sitting between the accessibility tree and
-            the sheet's rows. */}
-        {/* `accessibilityViewIsModal` LIVES HERE, ON THE CONTAINER OF BOTH —
-            not on `sheet` alone. `accessibilityViewIsModal` hides every HOST
-            SIBLING of the view that carries it (that is how VoiceOver's own
-            "stay inside the modal" behaves, and RNTL's `isSubtreeInaccessible`
-            models it exactly that way). Putting it on `sheet` made the
-            backdrop close button — `sheet`'s OWN sibling — invisible to
-            VoiceOver AND to `getByLabelText` in this file's own tests: the one
-            way a screen-reader user had to dismiss the sheet would have been
-            the one control they could not reach. Here, on the shared parent,
-            it isolates the whole overlay from the (already native-modal-
-            isolated) rest of the app, and leaves the backdrop and the sheet
-            as un-hidden children of each other's ancestor. */}
+        {/* THE BACKDROP IS A SIBLING OF THE SHEET, not its wrapper: wrapping it
+            made VoiceOver read the whole overlay as ONE opaque element. An
+            absolute-fill sibling closes the sheet on its own tap (the sheet,
+            painted over it, wins on its own rectangle) without sitting between
+            the accessibility tree and the rows.
+            `accessibilityViewIsModal` lives on the container of BOTH: on the
+            sheet alone it would hide the sheet's own sibling — the backdrop's
+            close button, the one way a screen-reader user can dismiss it. */}
         <View accessibilityViewIsModal style={styles.overlay}>
           <Pressable
             accessibilityLabel="Cerrar menú"
@@ -226,28 +252,28 @@ export function HeaderMenuButton() {
             style={StyleSheet.absoluteFill}
           />
           {/* `accessible={false}`: a CONTAINER, not one opaque element — every
-              row below is its own accessibility node again. */}
+              row below is its own accessibility node. */}
           <View accessible={false} style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Ir a…</Text>
-            {/* A `maxHeight` CAP, not a fixed height (B-08's own argument,
-                `kit.tsx`'s `PasswordField` note) — at the largest font scale
-                eight rows plus the title can exceed the screen, and a sheet
-                that just grew off the top and bottom clipped the last few
-                rows with no way to reach them. Capped at 70% of the window and
-                scrollable past that; short of the cap this scrolls nothing,
-                so ordinary font scales see no change. */}
-            <ScrollView style={{ maxHeight: windowHeight * 0.7 }}>
-              {TOP_LEVEL_DESTINATIONS.map((destination) => (
-                <Pressable
-                  key={destination.route}
-                  accessibilityHint={destination.accessibilityHint}
-                  accessibilityLabel={destination.label}
-                  accessibilityRole="button"
-                  onPress={() => selectDestination(destination.route)}
-                  style={(state) => [styles.row, pressedOpacity(state)]}
-                >
-                  <Text style={styles.rowLabel}>{destination.label}</Text>
-                </Pressable>
+            {/* A `maxHeight` CAP, not a fixed height: at the largest font scale
+                four groups of rows with captions exceed the screen, and a sheet
+                that grew past the edges clipped the last rows with no way to
+                reach them. 85% of the window (the review's number, up from 70%
+                for the flat list), scrollable past that; short of the cap this
+                scrolls nothing. */}
+            <ScrollView style={{ maxHeight: windowHeight * 0.85 }}>
+              {NAV_SECTIONS.map((section) => (
+                <View key={section.title}>
+                  <Text accessibilityRole="header" style={styles.sectionTitle}>
+                    {section.title}
+                  </Text>
+                  {section.destinations.map((destination) => (
+                    <NavRow
+                      key={destination.route}
+                      destination={destination}
+                      onPress={selectDestination}
+                    />
+                  ))}
+                </View>
               ))}
             </ScrollView>
           </View>
@@ -257,51 +283,40 @@ export function HeaderMenuButton() {
   );
 }
 
-/**
- * THE SECOND, SCROLL-BOUND DOOR (see the file header): the footer that lists
- * every `TOP_LEVEL_DESTINATIONS` entry as a full-width button, one stacked
- * per row. Lives here — beside the array it renders — rather than in
- * `app/mascotas/index.tsx`, because `MisMascotasScreen` (2026-09-24, M3 / R-1
- * review) needs it TWICE: once inside the loaded arm's `FlatList` footer, and
- * once in the loading/failed arms, which render on the shared `Screen`
- * instead. Those two arms used to only get this footer in the loaded case —
- * a person offline on first open saw an `ErrorNotice` and NOTHING ELSE, no
- * way out of the screen but the hardware back button, which is exactly the
- * gap this component's own header menu exists to close on the OTHER two
- * screens. One component used in both places means a destination added here
- * cannot silently reach only one of them.
- */
-export function DestinationsFooter() {
-  const router = useRouter();
+/** One row: icon, label, the optional caption under it, a chevron. `ListRow`'s anatomy. */
+function NavRow({
+  destination,
+  onPress,
+}: {
+  destination: NavDestination;
+  onPress: (route: string) => void;
+}) {
+  const RowIcon = destination.icon;
   return (
-    <View style={styles.footer}>
-      {TOP_LEVEL_DESTINATIONS.map((destination) =>
-        destination.civicAction ? (
-          <View key={destination.route} style={styles.civicAction}>
-            <SecondaryButton
-              accessibilityHint={destination.accessibilityHint}
-              label={destination.label}
-              onPress={() => router.push(destination.route)}
-            />
-          </View>
-        ) : (
-          <SecondaryButton
-            key={destination.route}
-            accessibilityHint={destination.accessibilityHint}
-            label={destination.label}
-            onPress={() => router.push(destination.route)}
-          />
-        ),
-      )}
-    </View>
+    <Pressable
+      accessibilityHint={destination.caption ?? destination.accessibilityHint}
+      accessibilityLabel={destination.label}
+      accessibilityRole="button"
+      onPress={() => onPress(destination.route)}
+      style={(state) => [styles.row, pressedOpacity(state)]}
+    >
+      <View importantForAccessibility="no-hide-descendants" style={styles.rowIcon}>
+        <RowIcon size={20} color={COLORS.inkSoft} strokeWidth={1.75} />
+      </View>
+      <View style={styles.rowText}>
+        <Text style={styles.rowLabel}>{destination.label}</Text>
+        {destination.caption === undefined ? null : (
+          <Text style={styles.rowCaption}>{destination.caption}</Text>
+        )}
+      </View>
+      <View importantForAccessibility="no-hide-descendants">
+        <ChevronRight size={16} color={COLORS.inkMuted} strokeWidth={2} />
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  // `DestinationsFooter`'s own layout. `civicAction` carries the WHY: see
-  // `TopLevelDestination.civicAction`'s docblock above.
-  footer: { marginTop: SPACE.lg, gap: SPACE.sm },
-  civicAction: { marginTop: SPACE.sm },
   trigger: {
     minWidth: TOUCH_TARGET,
     minHeight: TOUCH_TARGET,
@@ -330,20 +345,38 @@ const styles = StyleSheet.create({
     paddingVertical: SPACE.sm,
     paddingHorizontal: SPACE.md,
   },
-  sheetTitle: {
+  sectionTitle: {
     fontFamily: FONTS.monoSemibold,
     fontSize: TYPE.xs,
     letterSpacing: TYPE.xs * LABEL_TRACKING_EM,
     textTransform: "uppercase",
     color: COLORS.inkMuted,
-    paddingTop: SPACE.sm,
+    paddingTop: SPACE.md,
     paddingBottom: SPACE.xs,
   },
   row: {
     minHeight: TOUCH_TARGET,
-    justifyContent: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACE.md,
+    paddingVertical: SPACE.xs,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderSoft,
   },
-  rowLabel: { fontFamily: FONTS.sansMedium, fontSize: TYPE.md, color: COLORS.ink },
+  rowIcon: { width: 22, alignItems: "center" },
+  // The column shrinks and wraps; the icon and the chevron keep their width —
+  // so at font scale 1.3 the row grows taller instead of clipping its label.
+  rowText: { flex: 1, flexShrink: 1, gap: 1 },
+  rowLabel: {
+    fontFamily: FONTS.sansMedium,
+    fontSize: TYPE.md,
+    lineHeight: TYPE.md * LEADING.sm,
+    color: COLORS.ink,
+  },
+  rowCaption: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.sm,
+    lineHeight: TYPE.sm * LEADING.sm,
+    color: COLORS.inkMuted,
+  },
 });

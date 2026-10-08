@@ -13,6 +13,15 @@
 //
 // PAGINATION IS "MOSTRAR MÁS", the adoption catalogue's pattern: the server's
 // opaque cursor, appended, never replacing what is already on screen.
+//
+// "NUEVA DENUNCIA" IS THE PRIMARY ACTION, AT THE TOP, IN EVERY STATE
+// (inicio-app-rediseno, PO 2026-10-07). The header menu's one Comunidad row for
+// denuncias lands on this list — "Denunciar maltrato" stopped being a door of
+// its own — so filing one is now two taps from the home instead of one. For an
+// act that can be urgent the second tap has to be impossible to miss: the
+// button is the first thing on the screen, whether the list is loading, failed
+// or loaded, because a failed read of what you filed BEFORE must never stand
+// between you and filing now.
 
 import type { MyWelfareReportRowV1, MyWelfareReportsV1 } from "@dim/contract/api";
 import { useFocusEffect } from "expo-router";
@@ -26,6 +35,7 @@ import { Body, EmptyState, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import {
   Callout,
+  PrimaryButton,
   Screen,
   SecondaryButton,
   Subtitle,
@@ -124,6 +134,7 @@ export function MyReportsScreen({
   if (state.phase === "loading") {
     return (
       <Screen>
+        <PrimaryButton label="Nueva denuncia" onPress={onNewReport} />
         <ListSkeleton rows={3} label="Cargando tus denuncias…" />
       </Screen>
     );
@@ -132,6 +143,7 @@ export function MyReportsScreen({
   if (state.phase === "failed") {
     return (
       <Screen>
+        <PrimaryButton label="Nueva denuncia" onPress={onNewReport} />
         <Title>Mis denuncias</Title>
         <Callout tone="err">
           <Body>{state.message}</Body>
@@ -145,6 +157,7 @@ export function MyReportsScreen({
 
   return (
     <Screen refreshControl={pullToRefresh(() => void load("refresh"), refreshing)}>
+      <PrimaryButton label="Nueva denuncia" onPress={onNewReport} />
       <Title>Mis denuncias</Title>
       <Subtitle>{myReportsSummary(reports.length, nextCursor !== null)}</Subtitle>
 
@@ -156,8 +169,6 @@ export function MyReportsScreen({
         <EmptyState
           headline="Aún no enviaste denuncias."
           body="Podés reportar maltrato, abandono u otras situaciones de riesgo para animales."
-          actionLabel="Nueva denuncia"
-          onAction={onNewReport}
         />
       ) : (
         <View style={styles.list}>
@@ -186,10 +197,6 @@ export function MyReportsScreen({
           siguen con el código que te dimos al enviarlas.
         </Body>
       </Callout>
-
-      {reports.length === 0 ? null : (
-        <SecondaryButton label="Nueva denuncia" onPress={onNewReport} />
-      )}
     </Screen>
   );
 }

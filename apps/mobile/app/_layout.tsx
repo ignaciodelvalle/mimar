@@ -60,10 +60,10 @@ import { startPushRegistration } from "../src/notifications/push-session-binding
 import { usePushTapNavigation } from "../src/notifications/push-tap";
 import { initSentry } from "../src/observability/sentry";
 import { useNavigationBreadcrumb } from "../src/observability/use-navigation-breadcrumb";
+import { HeaderActions } from "../src/ui/HeaderActions";
 import { HeaderBackButton } from "../src/ui/HeaderBackButton";
 import { LaunchMark, holdNativeSplash, launchMarkReady } from "../src/ui/LaunchMark";
 import { OfflineBanner } from "../src/ui/OfflineBanner";
-import { HeaderMenuButton } from "../src/ui/TopLevelNavMenu";
 import { FONTS, useLnFonts } from "../src/ui/fonts";
 import { COLORS, TYPE } from "../src/ui/theme";
 
@@ -324,13 +324,12 @@ function RootLayout() {
           name="aceptar-condiciones"
           options={{ title: "Términos", headerBackVisible: false, headerLeft: () => null }}
         />
-        {/* HEADER MENU ON BOTH — U-1 (M2, Samsung J7 2016 / Android 8): every
-            top-level destination used to be a footer link below every pet
-            card, unreachable from here or from the pet screen without
-            scrolling past the whole list. `HeaderMenuButton` sits in the
-            native header, which never scrolls, and opens a sheet naming all
-            eight at once. See `src/ui/TopLevelNavMenu.tsx`. The footer stays
-            — this is a second door, not a replacement. */}
+        {/* BELL + MENU ON BOTH (inicio-app-rediseno, PO 2026-10-07). The
+            native header never scrolls, so what sits in it is one tap away
+            from anywhere on these two screens: the bell with the unread badge,
+            and the ☰ that is now the ONLY door to the rarely used destinations
+            — the home's nine-button footer is gone. See
+            `src/ui/HeaderActions.tsx` and `src/ui/TopLevelNavMenu.tsx`. */}
         <Stack.Screen
           name="mascotas/index"
           options={{
@@ -339,7 +338,7 @@ function RootLayout() {
             // See the note on `identidad-pendiente` above: the global
             // `headerLeft` default needs its own override here too.
             headerLeft: () => null,
-            headerRight: () => <HeaderMenuButton />,
+            headerRight: () => <HeaderActions />,
           }}
         />
         {/* The pet screen carries THREE faces now — the owner's chrome, the
@@ -348,7 +347,7 @@ function RootLayout() {
             says which face is showing. */}
         <Stack.Screen
           name="mascotas/[publicToken]"
-          options={{ title: "Mascota", headerRight: () => <HeaderMenuButton /> }}
+          options={{ title: "Mascota", headerRight: () => <HeaderActions /> }}
         />
         <Stack.Screen
           name="mascotas/[publicToken]/eventos/[eventId]"
@@ -563,11 +562,14 @@ function RootLayout() {
             screen falls back to while its case kind is still loading. */}
         <Stack.Screen name="casos/index" options={{ title: "Mis casos" }} />
         <Stack.Screen name="casos/[publicCode]" options={{ title: "Caso" }} />
-        {/* MIS DENUNCIAS (M16). "Mis denuncias" is the web page's own heading
-            (`/denuncias/mias`); "Denuncia" is the singular the detail falls
-            back to before its kind label loads. Unregistered, the headers
-            would read "denuncias/index" and "denuncias/[referenceCode]". */}
-        <Stack.Screen name="denuncias/index" options={{ title: "Mis denuncias" }} />
+        {/* DENUNCIAS (M16; renamed by inicio-app-rediseno, PO 2026-10-07). The
+            menu's one Comunidad row for denuncias lands here, under the web
+            OWNER_NAV's name for it; filing a new one is this screen's primary
+            action, and the list under it keeps its own "Mis denuncias"
+            heading. "Denuncia" is the singular the detail falls back to before
+            its kind label loads. Unregistered, the headers would read
+            "denuncias/index" and "denuncias/[referenceCode]". */}
+        <Stack.Screen name="denuncias/index" options={{ title: "Denuncias" }} />
         <Stack.Screen name="denuncias/[referenceCode]" options={{ title: "Denuncia" }} />
         <Stack.Screen name="recuperar" options={{ title: "Recuperar contraseña" }} />
         <Stack.Screen name="mascotas/[publicToken]/compartir" options={{ title: "Compartir" }} />
