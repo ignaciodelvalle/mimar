@@ -42,7 +42,8 @@ describe("PetRow", () => {
     render(<PetRow pet={pet()} onPress={onPress} />);
 
     expect(screen.getByText("Firulais")).toBeTruthy();
-    expect(screen.getByText("Perro · DIM-TEST-0001")).toBeTruthy();
+    expect(screen.getByText("Perro ·")).toBeTruthy();
+    expect(screen.getByText("DIM-TEST-0001")).toBeTruthy();
     expect(screen.getByText("Sin foto")).toBeTruthy();
     // Al día: no status chip — the › is the affordance (lean list, 2026-10-05).
     expect(screen.queryByText("Activa")).toBeNull();
@@ -52,6 +53,18 @@ describe("PetRow", () => {
     fireEvent.press(screen.getByRole("button"));
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(onPress).toHaveBeenCalledWith("DIM-TEST-0001");
+  });
+
+  it("never truncates the DIM token, and lets the row wrap instead (QA v14 P2d)", () => {
+    render(
+      <PetRow pet={pet({ species: "ferret", publicToken: "DIM-CVZE-8K2P" })} onPress={jest.fn()} />,
+    );
+    const token = screen.getByText("DIM-CVZE-8K2P");
+    // No line cap and no shrink: at font scale 1.3 it moves to its own line
+    // rather than ending in "…".
+    expect(token.props.numberOfLines).toBeUndefined();
+    expect(token).toHaveStyle({ flexShrink: 0 });
+    expect(screen.getByText("Hurón ·").props.numberOfLines).toBeUndefined();
   });
 
   it("chips only lost and deceased — not the quiet active default", () => {
