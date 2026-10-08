@@ -40,7 +40,7 @@ import { fetchMyAppointments } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, EmptyState, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { Callout, Eyebrow, PrimaryButton, Screen, SecondaryButton, Title } from "../ui/kit";
+import { Callout, Eyebrow, PrimaryButton, Screen, SecondaryButton } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { ListSkeleton } from "../ui/skeleton";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
@@ -51,6 +51,7 @@ import {
   appointmentServiceLabel,
   appointmentShortWhenLabel,
   appointmentStatusLabel,
+  appointmentsTotal,
   appointmentsTotalLabel,
   emptyPastLabel,
   emptyUpcomingLabel,
@@ -140,7 +141,6 @@ export function TurnosScreen({
   if (state.phase === "failed") {
     return (
       <Screen>
-        <Title>Mis turnos</Title>
         {/* NOT an empty list. A read that failed and a person with no turnos are
             different facts, and "no tenés turnos" over a server outage is how
             somebody misses an appointment they have to physically attend. */}
@@ -156,10 +156,16 @@ export function TurnosScreen({
 
   return (
     <Screen refreshControl={refresher}>
-      <Title>Mis turnos</Title>
-      {/* The count comes from the SAME three arrays rendered below, by
-          construction — see the view-model for the web bug that rule exists for. */}
-      <Body>{appointmentsTotalLabel(state.view)}</Body>
+      {/* NO BODY TITLE: the stack header already says "Mis turnos", and the
+          same words twice is the first thing a person reads (pulido-kit-listas).
+          The count comes from the SAME three arrays rendered below, by
+          construction — see the view-model for the web bug that rule exists for.
+          DRAWN ONLY WHEN THERE IS SOMETHING TO COUNT: with nothing booked it
+          read "No tenés turnos reservados." right above "No tenés turnos
+          próximos." — the empty state below says it once, with the button. */}
+      {appointmentsTotal(state.view) === 0 ? null : (
+        <Body>{appointmentsTotalLabel(state.view)}</Body>
+      )}
 
       {state.staleFailure === null ? null : (
         <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
@@ -168,8 +174,10 @@ export function TurnosScreen({
       {/* THE PRIMARY ACTION OF THIS SCREEN, above the sections rather than under
           them: a person with a long history still opens this to book the next
           one, and a control that has to be scrolled past three headings to reach
-          is a control that reads as absent. */}
-      <PrimaryButton label="Buscar un turno" onPress={onSearch} />
+          is a control that reads as absent. With nothing upcoming it moves INTO
+          the empty state, whose sentence is what it answers — same height on
+          the screen, one block instead of two. */}
+      {upcoming.length === 0 ? null : <PrimaryButton label="Buscar un turno" onPress={onSearch} />}
 
       <View style={styles.section}>
         <Eyebrow>Próximos</Eyebrow>
@@ -181,6 +189,8 @@ export function TurnosScreen({
             // sentence while there was nothing to tap; pointing somebody at a
             // browser that does not share their session is not, once there is.
             body="Buscá un turno para tu mascota y reservalo desde acá."
+            actionLabel="Buscar un turno"
+            onAction={onSearch}
           />
         ) : (
           upcoming.map((appointment) => (
