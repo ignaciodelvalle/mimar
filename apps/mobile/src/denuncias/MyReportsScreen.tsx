@@ -35,11 +35,11 @@ import { Body, EmptyState, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import {
   Callout,
+  LinkText,
   PrimaryButton,
   Screen,
   SecondaryButton,
   Subtitle,
-  Title,
   pressedOpacity,
   pullToRefresh,
 } from "../ui/kit";
@@ -64,9 +64,16 @@ const FAILED_READ = "No pudimos leer tus denuncias.";
 export function MyReportsScreen({
   onOpenReport,
   onNewReport,
+  onFindByCode,
 }: {
   onOpenReport: (referenceCode: string) => void;
   onNewReport: () => void;
+  /**
+   * Where an ANONYMOUS denuncia is followed: the web's "Buscar mi denuncia"
+   * (`/denuncias/buscar`), which takes the code given at submission. The route
+   * binds it; the screen never navigates itself.
+   */
+  onFindByCode: () => void;
 }) {
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
   const [refreshing, setRefreshing] = useState(false);
@@ -144,7 +151,6 @@ export function MyReportsScreen({
     return (
       <Screen>
         <PrimaryButton label="Nueva denuncia" onPress={onNewReport} />
-        <Title>Mis denuncias</Title>
         <Callout tone="err">
           <Body>{state.message}</Body>
         </Callout>
@@ -158,8 +164,13 @@ export function MyReportsScreen({
   return (
     <Screen refreshControl={pullToRefresh(() => void load("refresh"), refreshing)}>
       <PrimaryButton label="Nueva denuncia" onPress={onNewReport} />
-      <Title>Mis denuncias</Title>
-      <Subtitle>{myReportsSummary(reports.length, nextCursor !== null)}</Subtitle>
+      {/* NO BODY TITLE: the stack header already names the screen. And the
+          count only when there is something to count — with none it read "Sin
+          denuncias enviadas." right above "Aún no enviaste denuncias.", the
+          same absence said twice. */}
+      {reports.length === 0 ? null : (
+        <Subtitle>{myReportsSummary(reports.length, nextCursor !== null)}</Subtitle>
+      )}
 
       {state.staleFailure === null ? null : (
         <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
@@ -196,6 +207,11 @@ export function MyReportsScreen({
           Las denuncias anónimas no quedan vinculadas a tu cuenta, por eso no aparecen acá. Se
           siguen con el código que te dimos al enviarlas.
         </Body>
+        {/* The sentence names a code; this is where the code goes. Without it
+            the callout explained the absence and stopped there. */}
+        <LinkText onPress={onFindByCode} accessibilityHint="Abre la búsqueda en la web">
+          Buscar mi denuncia con el código
+        </LinkText>
       </Callout>
     </Screen>
   );
