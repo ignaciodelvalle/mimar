@@ -150,7 +150,9 @@ async function snapshot(tx: postgres.TransactionSql): Promise<Snapshot> {
  */
 async function applyMirrorAndRollBack(): Promise<{ before: Snapshot; after: Snapshot }> {
   const mirror = readFileSync(MIRROR, "utf8");
-  for (let attempt = 0; ; attempt++) {
+  // Retry a busy table for up to 10 s — inside the case's 15 s timeout.
+  const deadline = Date.now() + 10_000;
+  for (;;) {
     let result: { before: Snapshot; after: Snapshot } | undefined;
     try {
       await client.begin(async (tx) => {
@@ -166,7 +168,7 @@ async function applyMirrorAndRollBack(): Promise<{ before: Snapshot; after: Snap
     } catch (err) {
       if (err instanceof Rollback && result) return result;
       const code = (err as { code?: string }).code;
-      if (code === "55P03" && attempt < 30) {
+      if (code === "55P03" && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 50 + Math.random() * 100));
         continue;
       }
