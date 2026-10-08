@@ -22,14 +22,25 @@
 import { type SQL, sql } from "drizzle-orm";
 
 import { petEvents } from "@/db";
+import { RABIES_FAMILY_PATTERN } from "@/lib/reference/lookups";
 
 /**
- * Anchored, accent-aware regex identifying a rabies vaccine by its (amended)
- * vaccine_name. The SINGLE source of "is this a rabies vaccine": matches the
- * canonical form name "Antirrábica" (accented á) as well as "rabies", but NOT
- * arbitrary substrings. Used with the `~*` (case-insensitive regex) operator.
+ * "This (amended) vaccine_name is a rabies vaccine" — the SQL twin of
+ * `isRabiesVaccineName` (lib/reference/lookups.ts), and the single SQL
+ * definition every rabies metric goes through.
+ *
+ * It folds the name exactly as the TypeScript side does (`unaccent(lower())`
+ * here, `vaccineNameKey` there — unaccent also drops a decomposed accent) and
+ * applies the SAME pattern source, `RABIES_FAMILY_PATTERN`. Until 2026-10-07
+ * this was `~* '(antirr[áa]bica|rabies)'`, which missed "Rabia" and a
+ * decomposed "á" that the owner's credential read as rabies, so a dose could
+ * count on the pet's document and not in the coverage KPI (surface audit, A).
+ * Parity is tested against a live Postgres in
+ * __tests__/rabies-name-sql-parity.test.ts.
  */
-export const RABIES_VACCINE_NAME_REGEX = "(antirr[áa]bica|rabies)";
+export function rabiesVaccineNameSql(name: SQL): SQL {
+  return sql`(unaccent(lower(${name})) ~ ${RABIES_FAMILY_PATTERN})`;
+}
 
 /**
  * "Currently-valid" predicate for a single rabies dose (issue #52 refinement).
@@ -125,7 +136,7 @@ export function rabiesDoseQualifies(
   const amendedName = sql`amended.vaccine_name`;
   const amendedNextDue = sql`amended.next_due_at`;
   return sql`(
-    SELECT (${amendedName}) ~* ${RABIES_VACCINE_NAME_REGEX}
+    SELECT ${rabiesVaccineNameSql(amendedName)}
        AND ${rabiesCurrentlyValidCondition(refs.occurredAt, amendedNextDue, window)}
     FROM (
       SELECT
@@ -178,7 +189,7 @@ export function rabiesSignedByMatriculaCondition(authorRoleRef: SQL, authorVerif
 /**
  * EXISTS predicate: the pet referenced by `petIdRef` has at least one
  * `vaccination_administered` event whose amended vaccine_name matches
- * RABIES_VACCINE_NAME_REGEX and that is CURRENTLY VALID as of `window.until`
+ * rabiesVaccineNameSql and that is CURRENTLY VALID as of `window.until`
  * (see rabiesCurrentlyValidCondition — next_due_at expiry, 12m proxy fallback).
  *
  * SPECIES IS NOT FILTERED HERE — the canonical numerator is DOGS, but callers

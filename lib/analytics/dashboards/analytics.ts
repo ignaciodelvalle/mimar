@@ -8,6 +8,7 @@ import { custodyDisputes, analyticsDb as db, disputeHoldsCustodyLock, petEvents,
 import { hasNationalReadScope } from "@/lib/domain/jurisdiction-canonical";
 import { amendedPayloadText } from "@/lib/infra/amendment-sql";
 import type { DashboardActor, DashboardJurisdiction } from "@/lib/metrics";
+import { rabiesVaccineNameSql } from "@/lib/metrics/rabies";
 import { DAY_MS, custodyDisputesScopeClause, petsScopeClause } from "./_scope";
 
 // NOTE(E5): The spec references "shelter_adoption" as an acquisition method,
@@ -92,7 +93,7 @@ export const RABIES_VACCINATION_RATE_LABEL_ES =
  * rabiesVaccinationRate:
  *   NUMERATOR:   COUNT DISTINCT active/lost pets of ANY species with ≥1
  *                vaccination_administered event where
- *                unaccent(vaccine_name) ILIKE unaccent('%rabi%') (amendment-
+ *                rabiesVaccineNameSql(vaccine_name) (amendment-
  *                overlay-aware). NO occurred_at filter — all-time.
  *   DENOMINATOR: COUNT active/lost pets (any species) in scope (totalPets).
  *   SOURCE:      pets, pet_events (vaccination_administered).
@@ -176,7 +177,7 @@ export async function fetchAnalyticsMetrics(
 
   // 3. rabiesVaccinationRate: distinct petIds with ≥1 vaccination_administered where
   //    vaccine_name accent-insensitively matches rabia/rabies/antirrábica/antirrabica.
-  //    unaccent() strips diacritics on both sides so the pattern '%rabi%' catches:
+  //    rabiesVaccineNameSql folds with unaccent(lower()) and matches 'antirrab|rabi':
   //      - "rabia"           → unaccent → "rabia"       → contains "rabi" ✓
   //      - "rabies"          → unaccent → "rabies"      → contains "rabi" ✓
   //      - "antirrábica"     → unaccent → "antirrabica" → contains "rabi" ✓
@@ -195,7 +196,9 @@ export async function fetchAnalyticsMetrics(
   const rabiesConditions = [
     eq(petEvents.eventType, "vaccination_administered"),
     // Amendment overlay (audit A2): match the CURRENT (corrected) vaccine name.
-    sql`unaccent(${amendedPayloadText("vaccine_name")}) ILIKE unaccent(${"%rabi%"})`,
+    // THE shared SQL rabies matcher (surface audit 2026-10-07): the same folded
+    // pattern the owner's credential uses.
+    rabiesVaccineNameSql(amendedPayloadText("vaccine_name")),
     // Same padrón definition as totalPets — see analytics-ranking.ts, which
     // applies the identical filter and is asserted to agree with this tile.
     sql`${pets.status} IN ('active', 'lost')`,

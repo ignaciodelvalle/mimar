@@ -8,6 +8,7 @@
 // Helpers in here MUST NOT throw — return empty arrays on no-data so the
 // widgets can render the empty state uniformly.
 
+import { isRabiesVaccineName } from "@/lib/reference/lookups";
 import {
   and,
   asc,
@@ -634,7 +635,8 @@ const COMPLIANCE_EVENT_TYPES = [
 ] as const;
 
 // Same rabies-reminder matcher the pet-profile header uses.
-const RABIES_TITLE_RE = /antirr[aá]b|rabi/i;
+// Rabies is recognised by THE shared matcher (isRabiesVaccineName, folded for
+// accents and case) — one rule across every surface (surface audit 2026-10-07).
 
 /**
  * Derive the compliance projection for a batch of pets in 4 bounded queries,
@@ -806,7 +808,7 @@ export async function fetchComplianceStatesForPets(
   // petActiveReminders.find).
   const rabiesReminderByPet = new Map<string, RabiesReminder>();
   const reminderCandidates = reminderRows
-    .filter((r) => RABIES_TITLE_RE.test(r.title))
+    .filter((r) => isRabiesVaccineName(r.title))
     .map((r) => {
       const daysUntilDue = Math.round((r.dueAt.getTime() - now.getTime()) / MS_PER_DAY);
       const reportable = isVaccineReportable(r.title, r.petSpecies, r.petLocality ?? "");

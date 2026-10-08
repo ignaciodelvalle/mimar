@@ -30,6 +30,7 @@ import { jurisdictionScopeContains } from "@/lib/domain/jurisdiction-canonical";
 import { amendedPayloadText } from "@/lib/infra/amendment-sql";
 import type { DashboardActor, DashboardJurisdiction } from "@/lib/metrics";
 import { ANONYMITY_K } from "@/lib/metrics/anonymity";
+import { rabiesVaccineNameSql } from "@/lib/metrics/rabies";
 import { findDisease } from "@/lib/reference/diseases";
 
 import {
@@ -729,7 +730,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         const conditions: SQL[] = [
           eq(petEvents.eventType, "vaccination_administered"),
           // Amendment overlay (audit A2): select AND label by the CURRENT name.
-          sql`unaccent(lower(coalesce(${amendedPayloadText("vaccine_name")}, ''))) LIKE '%rabi%'`,
+          rabiesVaccineNameSql(amendedPayloadText("vaccine_name")),
           gte(petEvents.occurredAt, since),
           lte(petEvents.occurredAt, until),
           ...petsJurisdictionFilter(),
@@ -1008,7 +1009,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         const conditions: SQL[] = [
           eq(petEvents.eventType, "vaccination_administered"),
           // Amendment overlay (audit A2): bucket by the CURRENT vaccine name.
-          sql`unaccent(lower(coalesce(${amendedPayloadText("vaccine_name")}, ''))) LIKE '%rabi%'`,
+          rabiesVaccineNameSql(amendedPayloadText("vaccine_name")),
           gte(petEvents.occurredAt, since),
           lte(petEvents.occurredAt, until),
           ...petsJurisdictionFilter(),
@@ -1286,7 +1287,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         const scope = petsScope(actor, jurisdictions);
         const conditions: SQL[] = [
           eq(petEvents.eventType, "vaccination_administered"),
-          sql`unaccent(lower(coalesce(${amendedPayloadText("vaccine_name")}, ''))) LIKE '%rabi%'`,
+          rabiesVaccineNameSql(amendedPayloadText("vaccine_name")),
           gte(petEvents.occurredAt, since),
           lte(petEvents.occurredAt, until),
           ...petsJurisdictionFilter(),

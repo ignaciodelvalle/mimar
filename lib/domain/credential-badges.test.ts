@@ -128,15 +128,21 @@ describe("deriveActiveMedications — corrected drug name is what the scanner se
 describe("isRabiesAtRisk — a corrected expiry flips the service-dog warning", () => {
   const now = new Date("2026-06-01T00:00:00Z");
 
-  // NOTE: the public heuristic matches vaccine names literally containing
-  // "rabia" (lowercased). It is accent-sensitive and misses the canonical
-  // "Antirrábica" — a PRE-EXISTING weakness of this banner (same class the KPI
-  // path fixed with an accent-aware regex; see lib/metrics/rabies.ts). Out of
-  // WAVE D1 scope; these tests exercise the correction-overlay, not the regex.
+  // The banner reads names through THE shared matcher (isRabiesVaccineName).
+  // It used to test `.includes("rabia")`, which never matched the canonical
+  // "Antirrábica" (surface audit 2026-10-07).
   it("expired rabies dose is at risk", () => {
     const events = [vaccination("v1", "Vacuna Rabia", "2025-01-01", "2026-01-01")];
     expect(isRabiesAtRisk(events, now)).toBe(true);
   });
+
+  it.each(["Antirrábica", "ANTIRRABICA", "Antirrábica"])(
+    "an expired %j is at risk too (the canonical name the old check missed)",
+    (name) => {
+      const events = [vaccination("v1", name, "2025-01-01", "2026-01-01")];
+      expect(isRabiesAtRisk(events, now)).toBe(true);
+    },
+  );
 
   it("a correction extending next_due_at into the future clears the risk", () => {
     const events = [

@@ -38,6 +38,7 @@ import { amendedPayloadText } from "@/lib/infra/amendment-sql";
 import type { AnalyticsPeriod } from "@/lib/analytics/analytics-period";
 
 import type { ProjectionContext } from "./context";
+import { rabiesVaccineNameSql } from "./rabies";
 import { petEventsScopeClause, petsScopeClause } from "./scope";
 import {
   type BucketGranularity,
@@ -290,8 +291,8 @@ export async function fetchOutbreakSignalsTrend(
  * and cannot be meaningfully back-dated per historical bucket without a
  * point-in-time population, which the event log does not carry.
  *
- * Rabies-vaccine match uses the SAME accent-aware regex as fetchRabiesCoverage
- * (~* '(antirr[áa]bica|rabies)') so "is a rabies vaccine" stays consistent.
+ * Rabies-vaccine match uses the SAME predicate as fetchRabiesCoverage
+ * (rabiesVaccineNameSql, lib/metrics/rabies.ts) so "is a rabies vaccine" stays consistent.
  * Scope to dogs via INNER JOIN pets + species filter.
  *
  * KPI tags: trend view of rabies_coverage_dogs_12m's numerator (see
@@ -318,7 +319,7 @@ export async function fetchRabiesVaccinationTrend(
     eq(petEvents.eventType, "vaccination_administered"),
     // Amendment overlay (audit A2): a corrected vaccine_name counts by its
     // CURRENT value, matching the TS read boundaries.
-    sql`(${amendedPayloadText("vaccine_name")}) ~* '(antirr[áa]bica|rabies)'`,
+    rabiesVaccineNameSql(amendedPayloadText("vaccine_name")),
     eq(pets.species, "dog"),
     gte(petEvents.occurredAt, ctx.period.since),
     lte(petEvents.occurredAt, ctx.period.until),

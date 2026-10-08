@@ -31,6 +31,7 @@ import { sql } from "drizzle-orm";
 import { auditLog, db } from "@/db";
 import { amendedPayloadText } from "@/lib/infra/amendment-sql";
 import type { ProjectionContext } from "@/lib/metrics";
+import { rabiesVaccineNameSql } from "@/lib/metrics/rabies";
 import { seesSyntheticRows } from "@/lib/metrics/scope";
 
 // ---------------------------------------------------------------------------
@@ -230,7 +231,7 @@ export async function fetchOverdueRabiesVaccine(
       FROM pet_events pe
       WHERE
         pe.event_type = 'vaccination_administered'
-        AND lower(${amendedPayloadText("vaccine_name", { id: sql`pe.id`, payload: sql`pe.payload`, petId: sql`pe.pet_id` })}) LIKE '%antirr%'
+        AND ${rabiesVaccineNameSql(amendedPayloadText("vaccine_name", { id: sql`pe.id`, payload: sql`pe.payload`, petId: sql`pe.pet_id` }))}
       GROUP BY pe.pet_id
     )
     SELECT

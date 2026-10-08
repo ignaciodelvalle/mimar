@@ -16,6 +16,7 @@
 
 import { computeConfidence, isAtLeast } from "@/lib/events/event-confidence";
 import { overlayAmendments } from "@/lib/infra/amendment";
+import { isRabiesVaccineName } from "@/lib/reference/lookups";
 import { parseDateInput } from "@/lib/utils/format";
 
 // A date-only "YYYY-MM-DD" next_due_at (legacy rows written before the
@@ -143,19 +144,13 @@ export function deriveRabiesSemaphore(
   events: CredentialEvent[],
   now: Date,
 ): { estado: "vigente" | "vencida" | "sin-vencimiento" | "none"; respaldo: CredentialProvenance } {
-  const isRabiesName = (name: unknown): boolean =>
-    typeof name === "string" &&
-    name
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
-      .includes("rabi");
-
+  // THE shared rabies matcher (folded for accents and case), one rule across
+  // every surface (surface audit 2026-10-07).
   const rabiesDoses = overlayAmendments(events)
     .filter(
       (e) =>
         e.eventType === "vaccination_administered" &&
-        isRabiesName((e.payload as { vaccine_name?: unknown })?.vaccine_name),
+        isRabiesVaccineName((e.payload as { vaccine_name?: unknown })?.vaccine_name),
     )
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
 
@@ -206,7 +201,12 @@ export function isRabiesAtRisk(events: CredentialEvent[], now: Date): boolean {
   if (!latest) return false;
 
   const payload = latest.payload as { vaccine_name?: string; next_due_at?: string };
-  if (!payload?.vaccine_name?.toLowerCase().includes("rabia") || !payload.next_due_at) {
+  // THE shared rabies matcher. This tested `.includes("rabia")`, which never
+  // matches "Antirrábica" ("antirrabica" holds "rabi", not "rabia") — so an
+  // expired antirrábica never raised this badge (surface audit 2026-10-07).
+  // Still the LATEST vaccine of any kind, on purpose: the asymmetry with
+  // deriveRabiesSemaphore is pinned in credential-badges.test.ts.
+  if (!isRabiesVaccineName(payload?.vaccine_name) || !payload?.next_due_at) {
     return false;
   }
   const nextDueAt = parseNextDue(payload.next_due_at);
