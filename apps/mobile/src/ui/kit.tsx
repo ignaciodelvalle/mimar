@@ -49,6 +49,7 @@ import type { ReactNode, Ref, RefObject } from "react";
 import { createContext, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  type AccessibilityState,
   type GestureResponderEvent,
   Keyboard,
   KeyboardAvoidingView,
@@ -347,21 +348,30 @@ function accessibleName(label: string, explicit: string | undefined, required: b
  * `hitSlop` rather than padding: the web's links sit inline in a sentence and
  * padding would push the sentence apart, but a 10px-tall tap target on a phone
  * is a miss waiting to happen. Slop grows the target without moving the text.
+ *
+ * A link that toggles something on the same screen (a disclosure) is a button
+ * to a screen reader, not a link: pass `accessibilityRole="button"` with its
+ * `accessibilityState` so the expanded/collapsed state is announced.
  */
 export function LinkText({
   children,
   onPress,
   accessibilityHint,
+  accessibilityRole = "link",
+  accessibilityState,
 }: {
   children: ReactNode;
   onPress: () => void;
   accessibilityHint?: string;
+  accessibilityRole?: "link" | "button";
+  accessibilityState?: AccessibilityState;
 }) {
   const slop = Math.round((TOUCH_TARGET - TYPE.md * LEADING.md) / 2);
   return (
     <Pressable
-      accessibilityRole="link"
+      accessibilityRole={accessibilityRole}
       accessibilityHint={accessibilityHint}
+      accessibilityState={accessibilityState}
       android_ripple={RIPPLE_BORDERLESS}
       hitSlop={{ top: slop, bottom: slop, left: SPACE.sm, right: SPACE.sm }}
       onPress={onPress}

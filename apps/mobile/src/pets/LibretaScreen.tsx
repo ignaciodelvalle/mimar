@@ -512,6 +512,8 @@ function PapersGroup({
       <View style={styles.papersTicks}>
         <LinkText
           onPress={() => setExpanded((value) => !value)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
           accessibilityHint={expanded ? "Oculta la lista" : "Muestra un enlace por cada cambio"}
         >
           {expanded ? "Ocultar los cambios" : "Ver cada cambio"}

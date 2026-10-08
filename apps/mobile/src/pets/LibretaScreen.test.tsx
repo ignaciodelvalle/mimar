@@ -441,7 +441,10 @@ describe("LibretaScreen — trip papers ticks", () => {
     await screen.findByText("Papeles del viaje actualizados · 3 cambios · Chile");
     expect(screen.queryByText("Cambio 2 de 3")).toBeNull();
 
-    fireEvent.press(screen.getByRole("link", { name: "Ver cada cambio" }));
+    const collapsed = screen.getByRole("button", { name: "Ver cada cambio" });
+    expect(collapsed).toBeCollapsed();
+    fireEvent.press(collapsed);
+    expect(screen.getByRole("button", { name: "Ocultar los cambios" })).toBeExpanded();
     for (const [label, id] of [
       ["Cambio 3 de 3", "t-3"],
       ["Cambio 2 de 3", "t-2"],
@@ -451,8 +454,9 @@ describe("LibretaScreen — trip papers ticks", () => {
       expect(mockPush).toHaveBeenLastCalledWith(`/mascotas/${TOKEN}/eventos/${id}`);
     }
 
-    fireEvent.press(screen.getByRole("link", { name: "Ocultar los cambios" }));
+    fireEvent.press(screen.getByRole("button", { name: "Ocultar los cambios" }));
     expect(screen.queryByText("Cambio 2 de 3")).toBeNull();
+    expect(screen.getByRole("button", { name: "Ver cada cambio" })).toBeCollapsed();
   });
 });
 
