@@ -93,7 +93,12 @@ export function LnAgeFields({
           name="ageYears"
           type="number"
           min="0"
-          max="40"
+          // NO `max` (alta-validacion-edad). The ceiling depends on the species
+          // (`other` keeps 250) and on whether the age was TYPED: an age
+          // pre-filled from a stored date passes at any value, so an owner
+          // whose dog's date reads 76 years can still fix its colour. A browser
+          // `max` would block that save before `updatePetAction` ever runs —
+          // the server's `gateEditedAge` owns the range, with its own sentence.
           placeholder="Años"
           aria-label="Años de edad"
           value={years}
