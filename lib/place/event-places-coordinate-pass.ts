@@ -36,11 +36,14 @@
 // geocode_unique means a GEOCODED name that the pin corroborated, which is not
 // what happened here), and, in the same statement, one append-only
 // place_resolutions row per settled row (subject_table 'event_places', no
-// actor, the distances as the reason) — the audit trail every later place
-// resolution keeps (0250). The event is never touched (P2). Each batch is its
-// own transaction of at most APPLY_BATCH rows, and every UPDATE re-checks
-// that the row is still unresolved and spine-shaped and that every candidate
-// it was compared against is still live, so a re-run writes nothing twice.
+// actor, the rule met as the reason, never the distances: AUDIT_REASON) — the
+// audit trail every later place resolution keeps (0250). The event is never
+// touched (P2). Each batch is its own transaction of at most APPLY_BATCH rows,
+// and every UPDATE re-checks that the row is still unresolved and
+// spine-shaped and that every candidate it was compared against is still
+// live, so a re-run writes nothing twice. It does NOT detect a homonym ADDED
+// to the catalogue between the inventory and the apply (seconds apart in the
+// operator script); the catalogue import is not run concurrently with it.
 //
 // Executor-first, so a test can run it inside a rolled-back transaction (each
 // batch is then a savepoint). The operator door is
@@ -393,10 +396,14 @@ export type CoordinateApplyResult = {
   updatedByPair: Record<string, number>;
 };
 
-/** The place_resolutions reason of one applied row (≤ 1000 chars by 0250's CHECK). */
-export function auditReason(t: Pick<CoordinateTarget, "distanceKm" | "runnerUpKm">): string {
-  return `coordinate pass (plan maestro A2): the event's point is ${t.distanceKm.toFixed(1)} km from this homonym's centroid and ${t.runnerUpKm.toFixed(1)} km from the nearest other one (thresholds ${MAX_DISTANCE_KM} km / +${MIN_MARGIN_KM} km / x${MIN_RATIO})`;
-}
+/**
+ * The place_resolutions reason of every applied row: the rule that was met,
+ * never the distances. place_resolutions is append-only, so an erasure cannot
+ * coarsen it, and two distances to two public centroids would pin the event's
+ * point far tighter than the 2 decimals erasure leaves on pet_events
+ * (lib/events/payload-privacy.ts COORDINATE_PRIVACY).
+ */
+export const AUDIT_REASON = `coordinate pass (plan maestro A2): the event's own point is within ${MAX_DISTANCE_KM} km of this homonym's centroid, and every other candidate is at least ${MIN_MARGIN_KM} km farther and ${MIN_RATIO} times as far`;
 
 /**
  * Write the targets, APPLY_BATCH rows per transaction. Each UPDATE re-checks,
@@ -419,7 +426,7 @@ export async function applyCoordinatePass(
     const values = sql.join(
       batch.map(
         (t) =>
-          sql`(${t.eventId}::uuid, ${t.localityId}::uuid, ${t.provinceCode}::text, ${`{${t.candidateIds.join(",")}}`}::uuid[], ${auditReason(t)}::text)`,
+          sql`(${t.eventId}::uuid, ${t.localityId}::uuid, ${t.provinceCode}::text, ${`{${t.candidateIds.join(",")}}`}::uuid[], ${AUDIT_REASON}::text)`,
       ),
       sql`, `,
     );

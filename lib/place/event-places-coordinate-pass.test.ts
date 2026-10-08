@@ -5,11 +5,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AUDIT_REASON,
   type CandidateCentroid,
   MAX_DISTANCE_KM,
   MIN_MARGIN_KM,
   MIN_RATIO,
-  auditReason,
   coordinateTargets,
   decideByCoordinates,
   haversineKm,
@@ -210,11 +210,11 @@ describe("coordinateTargets — what an apply may write", () => {
     ]);
   });
 
-  it("writes an audit reason with both distances, inside 0250's 1000-char CHECK", () => {
-    const reason = auditReason({ distanceKm: 1.234, runnerUpKm: 197.06 });
-    expect(reason).toContain("1.2 km");
-    expect(reason).toContain("197.1 km");
-    expect(reason.length).toBeLessThanOrEqual(1000);
+  it("audits the rule met, never a distance that would outlive an erasure", () => {
+    expect(AUDIT_REASON).toContain(`${MAX_DISTANCE_KM} km`);
+    // Only the thresholds may appear as numbers: no measured, decimal distance.
+    expect(AUDIT_REASON).not.toMatch(/\d+\.\d/);
+    expect(AUDIT_REASON.length).toBeLessThanOrEqual(1000);
   });
 });
 
