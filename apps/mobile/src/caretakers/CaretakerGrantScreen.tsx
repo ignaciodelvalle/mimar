@@ -282,6 +282,10 @@ export function CaretakerGrantScreen({
         </Callout>
       )}
 
+      {/* THE FACTS FIRST, then the answer: a decision button shows what is
+          being decided beside it (PO rule, custody polish review). */}
+      <GrantFacts grant={grant} />
+
       <GrantActions
         grant={grant}
         busy={busy}
@@ -292,7 +296,6 @@ export function CaretakerGrantScreen({
         onRun={(input) => void run(input)}
       />
 
-      <GrantFacts grant={grant} />
     </Screen>
   );
 }
@@ -331,6 +334,10 @@ function GrantActions({
     const accepted = buildAcceptCaretakerGrant(grant.grantToken, consent === "si");
     return (
       <Callout tone="ok" title="¿Aceptás el cuidado?">
+        {/* THE SCOPE BESIDE THE BUTTON THAT AGREES TO IT, both halves, from
+            the server — literally inside the confirmation (see the header). */}
+        <Row label="Período" value={caretakerPeriodLabel(grant)} />
+        <Row label="Qué podés hacer" value={grant.scopeSentence} />
         <Body>
           Vas a quedar como cuidador/a temporal de {grant.pet.name}. {titular} puede finalizar el
           cuidado en cualquier momento.
@@ -385,7 +392,7 @@ function GrantActions({
     return (
       <Callout tone="neutral">
         <Body>
-          Este cuidado está activo hasta la fecha de abajo. Si necesitás terminarlo antes,
+          Este cuidado está activo hasta la fecha de arriba. Si necesitás terminarlo antes,
           coordinalo con {titular}: la finalización la hace el titular.
         </Body>
       </Callout>
@@ -415,8 +422,8 @@ function GrantActions({
 }
 
 /**
- * What is being asked. THE SCOPE IS RENDERED BESIDE THE BUTTON THAT AGREES TO
- * IT — the same screen, under the answer — and BOTH HALVES ALWAYS (header).
+ * What is being asked, ABOVE the answer, and BOTH HALVES OF THE SCOPE ALWAYS
+ * (header). The accept confirmation repeats the period and the scope.
  */
 function GrantFacts({ grant }: { grant: MyCaretakerGrantV1 }) {
   const counterparty = caretakerCounterpartyLabel(grant);
@@ -434,12 +441,12 @@ function GrantFacts({ grant }: { grant: MyCaretakerGrantV1 }) {
 
 const styles = StyleSheet.create({
   header: { gap: SPACE.xs },
-  // The request, as label/value lines rather than a titled Card: it is read,
-  // not acted on, so it sits under the answer.
+  // The request, as label/value lines rather than a titled Card, ruled off
+  // from the answer under it.
   section: {
     gap: SPACE.sm,
-    paddingTop: SPACE.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
+    paddingBottom: SPACE.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
   },
 });
