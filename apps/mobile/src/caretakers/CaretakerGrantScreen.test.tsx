@@ -377,3 +377,67 @@ describe("rejecting an invitation", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
+
+// THE INVENTORY, taken from the screen BEFORE the custody polish (2026-10-07)
+// moved it to one primary per state plus rows. Presentation changed;
+// reachability may not. Every action the old screen offered in each state must
+// still be a pressable, enabled button there — second steps included.
+//
+//   failed   · Reintentar
+//   missing  · Reintentar · Entrar con otra cuenta
+//   ready    · Aceptar el cuidado → (Sí / No) Confirmar el cuidado · No, volver
+//            · Rechazar la invitación → Confirmar el rechazo · Volver
+//   accepted · nothing (the titular ends it) — asserted above
+describe("every action the old screen offered is still reachable (custody polish)", () => {
+  function escapeRegExp(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  /** The control whose accessible name STARTS with the label (a row adds its caption). */
+  function expectReachable(label: string) {
+    const control = screen.getByRole("button", { name: new RegExp(`^${escapeRegExp(label)}`) });
+    expect(control).toBeEnabled();
+    return control;
+  }
+
+  it("draws a skeleton, not a spinner, while it reads", () => {
+    mockFetch.mockReturnValue(new Promise(() => {}));
+    render(<CaretakerGrantScreen grantToken={TOKEN} onAccepted={noop} />);
+    expect(screen.getByLabelText("Cargando la invitación…")).toBeOnTheScreen();
+  });
+
+  it("failed: Reintentar", async () => {
+    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    render(<CaretakerGrantScreen grantToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText(/No pudimos conectarnos/);
+    expectReachable("Reintentar");
+  });
+
+  it("missing: Reintentar and Entrar con otra cuenta", async () => {
+    loads(aGrant({ grantToken: "CG-ffffffffffffffffffffffffffffffff" }));
+    render(<CaretakerGrantScreen grantToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText(/no sea para vos/);
+    expectReachable("Reintentar");
+    expectReachable("Entrar con otra cuenta");
+  });
+
+  it("open invitation: accept with its consent and confirmation, reject with its own", async () => {
+    loads(aGrant());
+    render(<CaretakerGrantScreen grantToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText("Aceptar el cuidado");
+
+    fireEvent.press(expectReachable("Aceptar el cuidado"));
+    expect(screen.getByRole("radio", { name: "Sí" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "No" })).toBeEnabled();
+    expectReachable("Confirmar el cuidado");
+    fireEvent.press(expectReachable("No, volver"));
+
+    fireEvent.press(expectReachable("Rechazar la invitación"));
+    expectReachable("Confirmar el rechazo");
+    fireEvent.press(expectReachable("Volver"));
+
+    expectReachable("Aceptar el cuidado");
+    expectReachable("Rechazar la invitación");
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+});
