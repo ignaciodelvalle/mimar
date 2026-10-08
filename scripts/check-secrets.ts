@@ -408,6 +408,12 @@ export const ALLOWLIST: AllowEntry[] = [
     reason:
       "the word `localhost` used as a PASSWORD on a pooler host, proving the local-URL check reads the host and not the userinfo — no real credential",
   },
+  {
+    path: "lib/place/event-places-coordinate-pass.test.ts",
+    kind: "postgres_url_password",
+    reason:
+      "a table of URLs pinning that the coordinate pass's --apply treats only the Supabase CLI stack as local: the demo `postgres:postgres` on non-loopback hosts (db, host.docker.internal, supabase_db_dim) that must be REFUSED without --allow-remote — no real credential",
+  },
 
   // --- stripe_live_key: a synthetic token the redactor must strip ---
   {
