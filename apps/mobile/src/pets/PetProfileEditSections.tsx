@@ -270,7 +270,7 @@ function IdentityForm({
             "identity",
             extras === null
               ? buildIdentityEdit(identity, view.identity)
-              : buildProfileIdentity(identity, extras, view.identity),
+              : buildProfileIdentity(identity, extras, view, new Date()),
           )
         }
       />

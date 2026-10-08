@@ -25,6 +25,7 @@ import type {
   PetProfileTextLengthCode,
   PetSex,
   PetSpecies,
+  StatedAgeCode,
   StoredPetIdentityText,
   StoredPetProfileText,
 } from "@dim/contract/input";
@@ -40,6 +41,7 @@ import {
   SERVICE_DOG_NOTES_MAX,
   SERVICE_DOG_RUPGA_MAX,
   SERVICE_DOG_TRAINING_CENTER_MAX,
+  editedAgeRefusal,
   firstPetProfileCommandInputCode,
   petIdentityFieldCap,
   petProfileCommandInputSchema,
@@ -54,6 +56,7 @@ import {
   TRAINING_LEVEL_VALUES,
   type TrainingLevel,
   breedsForSpecies,
+  maxStatedAgeYears,
   petAgeFromBirthDate,
 } from "@dim/contract/reference";
 
@@ -366,6 +369,17 @@ export function petProfileInputCodeMessage(code: PetProfileCommandInputCode | nu
       return "Elegí cómo llegó la mascota de la lista.";
     case "CONDITION_OTHER_REQUIRED":
       return "Describí la otra condición.";
+    // alta-validacion-edad — the alta's own sentences (`register-input.ts`).
+    // AGE_TOO_HIGH names no number here because it has no species; the builder
+    // that has one says the cap (`editedAgeMessage`).
+    case "AGE_YEARS_INVALID":
+      return "Poné los años como un número entero, por ejemplo 3.";
+    case "AGE_MONTHS_INVALID":
+      return "Poné los meses como un número entero, por ejemplo 6.";
+    case "AGE_MONTHS_OUT_OF_RANGE":
+      return "Si pusiste años, los meses van de 0 a 11.";
+    case "AGE_TOO_HIGH":
+      return "Revisá la edad: ese número no puede ser la edad de tu mascota.";
     case "CONDITION_OTHER_HAS_CONTACT":
       // The web parser's own sentence for the same refusal (`parsePetForm`).
       return "La descripción de la condición no puede incluir teléfonos ni emails: puede mostrarse en la credencial pública. Escribila sin datos de contacto.";
@@ -738,19 +752,36 @@ function editProfileWire(sections: ProfileSections) {
 
 /**
  * GUARDAR IDENTIDAD. The three identity fields plus the sex and the age, posted
- * as the inputs hold them. Takes the STORED name and colour for the same
- * grandfathered length rule `buildIdentityEdit` applies.
+ * as the inputs hold them. Takes the PAYLOAD for what is stored: the name and
+ * colour for the same grandfathered length rule `buildIdentityEdit` applies,
+ * and the species and birth date for the age rule below.
+ *
+ * THE AGE (alta-validacion-edad, 2026-10-07): `editedAgeRefusal`, the rule the
+ * server runs, before the round trip — the server answers a bare
+ * `invalid_request`, so the field has to be named here. An age posted back as
+ * shown passes at any value (a stored date the old clamp let through must not
+ * block a colour fix); a TYPED one is held to the alta's rule and cap. `now` is
+ * the save's instant; the match tolerates the day the form may have opened on.
  */
 export function buildProfileIdentity(
   identity: IdentityDraft,
   extras: IdentityExtrasDraft,
-  stored: StoredPetIdentityText,
+  payload: PetProfileEditV1,
+  now: Date,
 ): CommandResult {
   const name = identity.name.trim();
   const color = identity.color.trim() || null;
-  const lengths = resolvePetIdentityLengths({ name, color }, stored);
+  const lengths = resolvePetIdentityLengths({ name, color }, payload.identity);
   if (!lengths.ok) {
     return { ok: false, code: lengths.code, message: petProfileInputCodeMessage(lengths.code) };
+  }
+  const ageCode = editedAgeRefusal(
+    { species: payload.species, ageYears: extras.ageYears, ageMonths: extras.ageMonths },
+    editableProfile(payload)?.dateOfBirth ?? null,
+    now,
+  );
+  if (ageCode !== null) {
+    return { ok: false, code: ageCode, message: editedAgeMessage(ageCode, payload.species) };
   }
   return validated(
     editProfileWire({
@@ -764,6 +795,13 @@ export function buildProfileIdentity(
       },
     }),
   );
+}
+
+/** The alta's sentences for the age (`register-input.ts`), with this species' cap. */
+function editedAgeMessage(code: StatedAgeCode, species: string): string {
+  return code === "AGE_TOO_HIGH"
+    ? `Revisá la edad: no puede pasar de ${maxStatedAgeYears(species)} años.`
+    : petProfileInputCodeMessage(code);
 }
 
 /**
