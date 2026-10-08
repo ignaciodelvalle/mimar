@@ -241,6 +241,21 @@ describe("the operator script's guard", () => {
     expect(refusal(REMOTE, true, ["--apply", "--allow-remote"])).toBeNull();
   });
 
+  it.each([
+    ["the compose hostname", "postgresql://postgres:postgres@db:5432/postgres"],
+    ["0.0.0.0", "postgresql://postgres:postgres@0.0.0.0:54322/postgres"],
+    ["host.docker.internal", "postgresql://postgres:postgres@host.docker.internal:54322/postgres"],
+    ["the CLI container name", "postgresql://postgres:postgres@supabase_db_dim:5432/postgres"],
+    ["loopback on another port", "postgresql://postgres:postgres@127.0.0.1:5432/postgres"],
+    ["an unparseable URL", "not a url"],
+  ])(
+    "refuses to WRITE %s without --allow-remote (only the CLI stack is a writer's local)",
+    (_what, url) => {
+      expect(refusal(url, false, ["--apply"])).toContain("--allow-remote to write");
+      expect(refusal(url, true, ["--apply", "--allow-remote"])).toBeNull();
+    },
+  );
+
   it("refuses --apply together with --dry-run", () => {
     expect(refusal(LOCAL, false, ["--apply", "--dry-run"])).toContain("exclusive");
   });
