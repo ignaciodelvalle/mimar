@@ -57,7 +57,7 @@ const CORRIDOR_DISPLAY_LABELS: Record<string, string> = {
   usa: "Estados Unidos",
 };
 
-function corridorDisplayLabel(corridorId: string): string {
+export function corridorDisplayLabel(corridorId: string): string {
   return CORRIDOR_DISPLAY_LABELS[corridorId] ?? corridorId;
 }
 

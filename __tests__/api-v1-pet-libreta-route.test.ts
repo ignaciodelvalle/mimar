@@ -347,6 +347,44 @@ describe("buildPetLibretaV1 — a correction reads as a correction", () => {
   });
 });
 
+describe("buildPetLibretaV1 — a trip papers tick names its trip", () => {
+  it("carries the destination and the trip's day as facts, for the app to group on", () => {
+    const data = faceData({
+      past: [
+        pastRow({
+          id: "evt-tick",
+          eventType: "event_amended",
+          payload: {
+            target_event_id: "evt-trip",
+            reason: "Papeles del viaje",
+            changes: [{ field: "documents_confirmed", old: [], new: ["CZI"] }],
+          },
+          hasAttachment: false,
+          attachmentUrl: null,
+        }),
+        pastRow({
+          id: "evt-trip",
+          eventType: "movement_recorded",
+          payload: {
+            sub_kind: "transport_recorded",
+            corridor_id: "uruguay",
+            travel_date: "2026-12-01",
+          },
+          hasAttachment: false,
+          attachmentUrl: null,
+        }),
+      ],
+    });
+    const tick = okSection(build({ data }).timeline).entries.find((e) => e.eventId === "evt-tick");
+    expect(tick?.title).toBe("Papeles del viaje actualizados");
+    expect(tick?.facts.map((f) => [f.key, f.value])).toEqual([
+      ["Fecha", "20 de ago de 2026"],
+      ["Destino", "Uruguay"],
+      ["Fecha del viaje", "1 de dic de 2026"],
+    ]);
+  });
+});
+
 describe("buildPetLibretaV1 — the audience filter runs on this side", () => {
   it("hides the non-libreta-sanitaria rows from an org viewer", () => {
     const data = faceData({
