@@ -174,7 +174,8 @@ export function getReportableVaccines(species: string, _jurisdiction: string): r
 /**
  * Normaliza un string para comparación: lowercase + elimina diacríticos (NFD decompose + strip marks)
  * + colapsa espacios.
- * Permite que "Antirrábica" matchee "rabia": "antirrabica".includes("rabia") → true.
+ * Ojo: "antirrabica".includes("rabia") es FALSE (la raíz embebida es "rrabica");
+ * por eso los matchers usan la raíz "rabi" (ver REPORTABLE_MATCH_ROOTS_BY_SPECIES).
  *
  * Exportada para reuso fuera de este módulo (ej: matching case/accent-insensitive
  * de títulos de recordatorios de vacuna en vaccination-use-case.ts, ya que no existe
