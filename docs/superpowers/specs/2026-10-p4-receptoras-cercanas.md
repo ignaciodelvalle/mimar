@@ -100,7 +100,11 @@ over Drizzle like every other write; the policies are the backstop.
 
 **Every change is audited, whatever the path.** A row trigger writes
 `org_found_animal_intake_changed` (payload: `org_id`, `before_values`,
-`after_values`) on INSERT and on any UPDATE that changes a governed column. The
+`after_values`, `public_contact_value_changed`) on INSERT and on any UPDATE that
+changes a governed column. The contact VALUE is never copied into `audit_log`:
+that table is append-only and cannot be redacted, and for a one-person org the
+published channel may be a person's phone. The row records that it changed and
+its kind; the value lives only in the settings table (a declared `KNOWN_GAP`). The
 actor is `auth.uid()` (a PostgREST write) or the transaction-local
 `app.actor_user_id` the server action sets. Putting the audit in the database —
 not in the action — is what makes "every change" true for the RLS write path
@@ -194,7 +198,9 @@ public projection's keys (exact set); opted-out, unverified, suspended and
 `other` orgs never appear; coarsening and no writes; RLS (admin positive,
 member / other-org admin / anon negative; audit row per change); the rate
 limit; distance ordering. e2e: `e2e/found-animal-help.spec.ts` (seeded receiving
-shelter and opted-in clinic in CABA).
+shelter and opted-in clinic in CABA). The `/encontre` walks and the filled lists
+run on a local target only: on the nightly staging pass they would file real
+reports and the fixtures may not exist there.
 
 ## 8. Follow-ups
 
