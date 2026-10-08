@@ -37,8 +37,9 @@ describe("deriveVacunasBadgeCounts — zero-records case", () => {
     expect(counts.porVencer).toBe(0);
     expect(counts.vigente).toBe(0);
     expect(counts.vencida).toBe(0);
-    // The 3 dog core vaccines surface as "sin aplicar", never as "por vencer".
-    expect(counts.sinAplicar).toBeGreaterThanOrEqual(3);
+    // The 2 dog calendar requirements (rabies + one polyvalent) surface as
+    // "sin aplicar", never as "por vencer".
+    expect(counts.sinAplicar).toBe(2);
   });
 });
 
@@ -125,6 +126,8 @@ describe("VacunasStatusBadges — a zero stays quiet", () => {
           unconfirmed: 0,
           otherCount: 0,
           perVaccine: [dose],
+          hasReferenceCalendar: true,
+          calendarNote: null,
         },
       }),
     );
@@ -146,6 +149,8 @@ describe("VacunasStatusBadges — a zero stays quiet", () => {
           unconfirmed: 0,
           otherCount: 0,
           perVaccine: [{ ...dose, status: "expired", nextDueAt: new Date("2026-01-01T12:00:00Z") }],
+          hasReferenceCalendar: true,
+          calendarNote: null,
         },
       }),
     );
@@ -174,5 +179,35 @@ describe("owner/share parity — same shared predicate", () => {
       NOW,
     );
     expect(deriveVacunasBadgeCounts(withDose).hasRecords).toBe(hasAnyVaccineRecord(withDose));
+  });
+});
+
+describe("VacunasStatusBadges — a species with no reference calendar (QA v14 P1)", () => {
+  it("a ferret with one rabies dose shows the dose and the honest note, never 'sin aplicar'", () => {
+    const summary = computeVaccinationSummary(
+      [
+        {
+          eventType: "vaccination_administered",
+          occurredAt: new Date("2026-03-01T12:00:00Z"),
+          payload: { vaccine_name: "Antirrábica" },
+        },
+      ],
+      "ferret",
+      NOW,
+    );
+    const html = renderToStaticMarkup(createElement(VacunasStatusBadges, { summary }));
+    expect(html).toContain("No tenemos un calendario de vacunas de referencia para hurones.");
+    expect(html).not.toContain("sin aplicar");
+    expect(deriveVacunasBadgeCounts(summary).sinAplicar).toBe(0);
+  });
+
+  it("a ferret with nothing recorded says so in the empty state", () => {
+    const html = renderToStaticMarkup(
+      createElement(VacunasStatusBadges, {
+        summary: computeVaccinationSummary([], "ferret", NOW),
+      }),
+    );
+    expect(html).toContain("Sin vacunas registradas");
+    expect(html).toContain("No tenemos un calendario de vacunas de referencia para hurones.");
   });
 });

@@ -52,12 +52,35 @@ export type VaccineDef = {
   // null = single dose / owner-specified; otherwise number of months until
   // the recommended next dose.
   intervalMonths: number | null;
+  /**
+   * Core vaccines that are ALTERNATIVES to each other share a group label: the
+   * calendar asks for ONE of them, not each. Séxtuple and Quíntuple are the
+   * same polyvalent shot with and without leptospirosis — a dog gets one or the
+   * other, and counting both as owed told every dog it was missing a vaccine
+   * it could never need (QA v14, 2026-10-07).
+   */
+  alternativeGroup?: string;
 };
+
+/** The requirement label for the dog's polyvalent shot (either member satisfies it). */
+export const POLYVALENT_GROUP_LABEL = "Polivalente (séxtuple o quíntuple)";
 
 export const VACCINE_CATALOG: ReadonlyArray<VaccineDef> = [
   { name: "Antirrábica", species: ["dog", "cat"], isCore: true, intervalMonths: 12 },
-  { name: "Séxtuple (DHPPi-L)", species: ["dog"], isCore: true, intervalMonths: 12 },
-  { name: "Quíntuple (DHPPi)", species: ["dog"], isCore: true, intervalMonths: 12 },
+  {
+    name: "Séxtuple (DHPPi-L)",
+    species: ["dog"],
+    isCore: true,
+    intervalMonths: 12,
+    alternativeGroup: POLYVALENT_GROUP_LABEL,
+  },
+  {
+    name: "Quíntuple (DHPPi)",
+    species: ["dog"],
+    isCore: true,
+    intervalMonths: 12,
+    alternativeGroup: POLYVALENT_GROUP_LABEL,
+  },
   {
     name: "Tos de las perreras (Bordetella)",
     species: ["dog"],
@@ -76,6 +99,49 @@ export function vaccinesForSpecies(species: string): VaccineDef[] {
     return VACCINE_CATALOG.filter((v) => v.species.includes(species));
   }
   return [...VACCINE_CATALOG];
+}
+
+/**
+ * One line of the recommended calendar: satisfied by a dose of ANY member.
+ * A single-member requirement is labelled with the vaccine's own name.
+ */
+export type VaccineRequirement = {
+  label: string;
+  members: readonly VaccineDef[];
+};
+
+/**
+ * The recommended (core) calendar for a species, or `null` when our reference
+ * data defines none for it.
+ *
+ * NOT `vaccinesForSpecies`. That helper deliberately returns the WHOLE catalog
+ * for a species it does not know, so a vaccine form can still offer names to
+ * pick from. Reusing it for the calendar is what made a ferret owe Séxtuple,
+ * Quíntuple and Triple felina (QA v14, 2026-10-07). A calendar is an assertion
+ * about what an animal SHOULD have received; for a species the catalog does not
+ * cover we have nothing to assert, and we do not invent one — not even rabies,
+ * which the catalog lists for dogs and cats only.
+ */
+export function recommendedCalendarForSpecies(species: string): VaccineRequirement[] | null {
+  if (species !== "dog" && species !== "cat") return null;
+  const requirements: VaccineRequirement[] = [];
+  const byGroup = new Map<string, VaccineDef[]>();
+  for (const v of VACCINE_CATALOG) {
+    if (!v.isCore || !v.species.includes(species)) continue;
+    if (!v.alternativeGroup) {
+      requirements.push({ label: v.name, members: [v] });
+      continue;
+    }
+    const group = byGroup.get(v.alternativeGroup);
+    if (group) {
+      group.push(v);
+      continue;
+    }
+    const members = [v];
+    byGroup.set(v.alternativeGroup, members);
+    requirements.push({ label: v.alternativeGroup, members });
+  }
+  return requirements;
 }
 
 /**

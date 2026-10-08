@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { computeVaccinationSummary } from "@/lib/domain/libreta-health-status";
 import { type ComplianceEvent, deriveComplianceState } from "@/lib/projections/pet-compliance";
 import {
+  POLYVALENT_GROUP_LABEL,
   RABIES_VACCINE_NAME,
   VACCINE_CATALOG,
   findVaccineByName,
@@ -133,9 +134,9 @@ describe("front and back agree on the same asiento", () => {
   it("does not count never-given core vaccines as unconfirmed once the dose resolves (the '3 Sin confirmar')", () => {
     const summary = back("Antirrabica");
     expect(summary.unconfirmed).toBe(0);
-    expect(summary.missing).toBe(2);
-    expect(backStatus("Antirrabica", "Séxtuple (DHPPi-L)")).toBe("missing");
-    expect(backStatus("Antirrabica", "Quíntuple (DHPPi)")).toBe("missing");
+    // One polyvalent requirement (Séxtuple OR Quíntuple), not two (QA v14 P1).
+    expect(summary.missing).toBe(1);
+    expect(backStatus("Antirrabica", POLYVALENT_GROUP_LABEL)).toBe("missing");
   });
 
   // ONE rabies rule on both faces (PO decision 2026-10-07): the front's verdict
@@ -160,8 +161,7 @@ describe("front and back agree on the same asiento", () => {
     expect(backStatus("DHPP + antirrábica", RABIES_VACCINE_NAME)).toBe("active");
     // Not inferred as given, and not asserted as absent either: the dog plainly
     // got a DHPP-something the catalog cannot name (PO 2026-07-28).
-    expect(backStatus("DHPP + antirrábica", "Séxtuple (DHPPi-L)")).toBe("unconfirmed");
-    expect(backStatus("DHPP + antirrábica", "Quíntuple (DHPPi)")).toBe("unconfirmed");
+    expect(backStatus("DHPP + antirrábica", POLYVALENT_GROUP_LABEL)).toBe("unconfirmed");
     expect(summary.otherCount).toBe(1);
   });
 
@@ -183,15 +183,14 @@ describe("front and back agree on the same asiento", () => {
       const summary = back(name);
       expect(backStatus(name, RABIES_VACCINE_NAME)).toBe("active");
       expect(summary.otherCount).toBe(1);
-      expect(backStatus(name, "Séxtuple (DHPPi-L)")).toBe("unconfirmed");
+      expect(backStatus(name, POLYVALENT_GROUP_LABEL)).toBe("unconfirmed");
     },
   );
 
   it("a plain rabies name ('Rabia') leaves the other cores missing", () => {
     const summary = back("Rabia");
     expect(backStatus("Rabia", RABIES_VACCINE_NAME)).toBe("active");
-    expect(backStatus("Rabia", "Séxtuple (DHPPi-L)")).toBe("missing");
-    expect(backStatus("Rabia", "Quíntuple (DHPPi)")).toBe("missing");
+    expect(backStatus("Rabia", POLYVALENT_GROUP_LABEL)).toBe("missing");
     expect(summary.otherCount).toBe(0);
   });
 

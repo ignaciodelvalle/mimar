@@ -95,6 +95,41 @@ beforeEach(() => {
   mockFetchPetLibreta.mockResolvedValue({ outcome: "ok", payload: payload() });
 });
 
+describe("LibretaScreen — a species with no reference calendar (QA v14 P1)", () => {
+  it("lists only what was recorded and says there is no calendar, with no 'sin aplicar' count", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        identity: {
+          status: "ok",
+          data: { name: "Pampita", species: "ferret", sex: "female", publicToken: TOKEN },
+        },
+        vaccination: {
+          status: "ok",
+          data: {
+            active: 1,
+            dueSoon: 0,
+            expired: 0,
+            missing: 0,
+            unconfirmed: 0,
+            otherCount: 0,
+            perVaccine: [{ vaccineName: "Antirrábica", status: "active" }],
+            calendarNote: "No tenemos un calendario de vacunas de referencia para hurones.",
+          },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Pampita")).toBeOnTheScreen();
+    expect(
+      screen.getByText("No tenemos un calendario de vacunas de referencia para hurones."),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/sin aplicar/)).toBeNull();
+    expect(screen.queryByText(/Séxtuple|Quíntuple|Triple felina/)).toBeNull();
+    expect(screen.queryByText("Nunca aplicada")).toBeNull();
+  });
+});
+
 describe("LibretaScreen — what a read that worked shows", () => {
   it("renders the animal, its vaccination verdict and its asientos", async () => {
     render(<LibretaScreen publicToken={TOKEN} />);

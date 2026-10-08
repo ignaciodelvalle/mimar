@@ -124,6 +124,7 @@ export function buildPetLibretaV1(input: BuildPetLibretaInput): PetLibretaV1 {
       lastDoseAt: toIsoOrNull(v.lastDoseAt),
       nextDueAt: toIsoOrNull(v.nextDueAt),
     })),
+    calendarNote: data.summary.calendarNote,
   };
 
   const upcoming: LibretaUpcomingSection = {

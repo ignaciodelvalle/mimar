@@ -190,6 +190,9 @@ export function VacunasStatusBadges({ summary }: { summary: VaccinationSummary }
                 : `${counts.sinAplicar} vacunas del calendario recomendado sin aplicar`}
             </span>
           )}
+          {summary.calendarNote && (
+            <span className="block text-xs mt-1">{summary.calendarNote}</span>
+          )}
         </p>
       </section>
     );
@@ -283,6 +286,14 @@ export function VacunasStatusBadges({ summary }: { summary: VaccinationSummary }
           {counts.sinAplicar === 1
             ? "1 vacuna del calendario recomendado sin aplicar"
             : `${counts.sinAplicar} vacunas del calendario recomendado sin aplicar`}
+        </p>
+      )}
+
+      {/* No calendar in our reference data for this species: what was recorded
+          is listed above, and nothing is claimed as owed (QA v14 P1). */}
+      {summary.calendarNote && (
+        <p className="mt-2 text-xs" style={{ color: "var(--color-ln-mute)" }}>
+          {summary.calendarNote}
         </p>
       )}
 

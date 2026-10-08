@@ -57,8 +57,8 @@ describe("computeVaccinationSummary", () => {
     expect(summary.active).toBe(0);
     expect(summary.expired).toBe(0);
     expect(summary.dueSoon).toBe(0);
-    // Catalog has dog cores: Antirrábica, Séxtuple, Quíntuple → 3 missing.
-    expect(summary.missing).toBeGreaterThanOrEqual(3);
+    // Dog calendar: Antirrábica + ONE polyvalent (Séxtuple OR Quíntuple) → 2.
+    expect(summary.missing).toBe(2);
     expect(summary.perVaccine.find((v) => v.vaccineName === "Antirrábica")?.status).toBe("missing");
   });
 
@@ -165,7 +165,7 @@ describe("computeVaccinationSummary", () => {
     // the claim. The shrinking path is write-side normalisation, not a cleverer
     // read: once the vet form stores catalog names, unmatched doses become rare.
     expect(summary.missing).toBe(0);
-    expect(summary.unconfirmed).toBeGreaterThanOrEqual(3);
+    expect(summary.unconfirmed).toBe(2);
   });
 
   it("dedupes multiple doses of the same off-catalog vaccine name", () => {
@@ -328,5 +328,99 @@ describe("computeVaccinationSummary — an unidentified dose blocks the 'never g
     expect(summary.otherCount).toBe(0);
     expect(summary.unconfirmed).toBe(0);
     expect(summary.missing).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// QA v14 P1 (2026-10-07): the calendar is per species, and alternatives are one
+// requirement. A ferret "owed" Séxtuple, Quíntuple and Triple felina; a dog with
+// neither polyvalent was told it was missing TWO vaccines.
+// ---------------------------------------------------------------------------
+
+describe("computeVaccinationSummary — the recommended calendar is per species", () => {
+  const now = new Date("2026-10-07T12:00:00.000Z");
+
+  it("a dog with neither polyvalent owes ONE 'Polivalente (séxtuple o quíntuple)'", () => {
+    const summary = computeVaccinationSummary(
+      [vaxEvent({ vaccineName: "Antirrábica", occurredAt: "2026-09-01T00:00:00Z" })],
+      "dog",
+      now,
+    );
+    expect(summary.missing).toBe(1);
+    expect(summary.perVaccine.map((v) => [v.vaccineName, v.status])).toEqual([
+      ["Antirrábica", "active"],
+      ["Polivalente (séxtuple o quíntuple)", "missing"],
+    ]);
+    expect(summary.hasReferenceCalendar).toBe(true);
+    expect(summary.calendarNote).toBeNull();
+  });
+
+  it("either polyvalent satisfies the requirement — the other is not owed", () => {
+    for (const name of ["Séxtuple (DHPPi-L)", "Quíntuple (DHPPi)"]) {
+      const summary = computeVaccinationSummary(
+        [
+          vaxEvent({ vaccineName: "Antirrábica", occurredAt: "2026-09-01T00:00:00Z" }),
+          vaxEvent({ vaccineName: name, occurredAt: "2026-09-01T00:00:00Z" }),
+        ],
+        "dog",
+        now,
+      );
+      expect(summary.missing).toBe(0);
+      expect(summary.perVaccine.map((v) => v.vaccineName)).toEqual(["Antirrábica", name]);
+    }
+  });
+
+  it("a cat owes rabies and Triple felina, never a dog vaccine", () => {
+    const summary = computeVaccinationSummary([], "cat", now);
+    expect(summary.perVaccine.map((v) => v.vaccineName)).toEqual([
+      "Antirrábica",
+      "Triple felina (FVRCP)",
+    ]);
+    expect(summary.missing).toBe(2);
+  });
+
+  it("a ferret has NO recommended list: nothing missing, an honest note instead", () => {
+    const summary = computeVaccinationSummary([], "ferret", now);
+    expect(summary.perVaccine).toEqual([]);
+    expect(summary.missing).toBe(0);
+    expect(summary.unconfirmed).toBe(0);
+    expect(summary.hasReferenceCalendar).toBe(false);
+    expect(summary.calendarNote).toBe(
+      "No tenemos un calendario de vacunas de referencia para hurones.",
+    );
+  });
+
+  it("a ferret shows only what was recorded — Pampita's shape", () => {
+    const summary = computeVaccinationSummary(
+      [vaxEvent({ vaccineName: "Antirrábica", occurredAt: "2026-09-01T00:00:00Z" })],
+      "ferret",
+      now,
+    );
+    expect(summary.perVaccine.map((v) => [v.vaccineName, v.status])).toEqual([
+      ["Antirrábica", "active"],
+    ]);
+    expect(summary.missing).toBe(0);
+    for (const v of summary.perVaccine) {
+      expect(["Séxtuple (DHPPi-L)", "Quíntuple (DHPPi)", "Triple felina (FVRCP)"]).not.toContain(
+        v.vaccineName,
+      );
+    }
+  });
+
+  it("an unidentified dose on a ferret claims nothing either way", () => {
+    const summary = computeVaccinationSummary(
+      [vaxEvent({ vaccineName: "Moquillo hurones", occurredAt: "2026-09-01T00:00:00Z" })],
+      "ferret",
+      now,
+    );
+    expect(summary.unconfirmed).toBe(0);
+    expect(summary.missing).toBe(0);
+    expect(summary.otherCount).toBe(1);
+  });
+
+  it("'other' species reads 'esta especie', not a plural that names nothing", () => {
+    expect(computeVaccinationSummary([], "other", now).calendarNote).toBe(
+      "No tenemos un calendario de vacunas de referencia para esta especie.",
+    );
   });
 });

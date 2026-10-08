@@ -125,6 +125,16 @@ export type LibretaVaccinationSection = {
    */
   otherCount: number;
   perVaccine: LibretaVaccineV1[];
+  /**
+   * The honest line for a species our reference data defines NO vaccine
+   * calendar for (ferret, rabbit, guinea pig, other) — "No tenemos un
+   * calendario de vacunas de referencia para hurones." — or null when the
+   * species has one. When present, `perVaccine` holds only what was recorded
+   * and nothing is `missing`: a client renders this line instead of any "sin
+   * aplicar" count. Server-written so the web libreta and the app say the same
+   * words. Optional on the wire: an older server omits it (treat as null).
+   */
+  calendarNote?: string | null;
 };
 
 // ---------------------------------------------------------------------------

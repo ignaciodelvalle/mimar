@@ -227,6 +227,9 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
                   : `${vaccination.missing} vacunas del calendario recomendado sin aplicar`}
               </Body>
             ) : null}
+            {/* No calendar for this species in our reference data: list only
+                what was recorded and say so, never an invented schedule. */}
+            {vaccination.calendarNote ? <Body>{vaccination.calendarNote}</Body> : null}
             {vaccination.perVaccine.length === 0 ? (
               <Body>No hay vacunas del catálogo registradas.</Body>
             ) : (

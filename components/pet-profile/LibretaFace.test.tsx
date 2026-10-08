@@ -75,6 +75,8 @@ function faceData(overrides: Partial<LibretaFaceData> = {}): LibretaFaceData {
       unconfirmed: 0,
       otherCount: 0,
       perVaccine: [],
+      hasReferenceCalendar: true,
+      calendarNote: null,
     },
     weightSamples: [],
     activeShares: [],

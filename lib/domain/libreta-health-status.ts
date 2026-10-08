@@ -14,14 +14,16 @@
 
 import {
   RABIES_VACCINE_NAME,
+  type VaccineDef,
   findVaccineByName,
   isPlainRabiesVaccineName,
   isRabiesVaccineName,
+  recommendedCalendarForSpecies,
   vaccineNameKey,
-  vaccinesForSpecies,
 } from "@/lib/reference/lookups";
 import { addCalendarMonths } from "@/lib/utils/calendar-months";
 import { isoDateInAr, parseDateInput } from "@/lib/utils/format";
+import { speciesLabelPlural } from "@/lib/utils/species";
 
 export type VaccineSnapshot = {
   /** Catalog display name. */
@@ -88,6 +90,15 @@ export type VaccinationSummary = {
   otherCount: number;
   /** Per-vaccine detail in catalog order. */
   perVaccine: VaccineSnapshot[];
+  /**
+   * False when our reference data defines NO recommended calendar for the
+   * species (ferret, rabbit, guinea pig, other). Then nothing is ever
+   * `missing`/`unconfirmed`, `perVaccine` holds only what was recorded, and
+   * surfaces show `calendarNote` instead of an "N sin aplicar" count.
+   */
+  hasReferenceCalendar: boolean;
+  /** The honest es-AR line for a species without a calendar; null otherwise. */
+  calendarNote: string | null;
 };
 
 export type MedicationActive = {
@@ -185,6 +196,16 @@ export function suggestNextDueDate(occurredAt: string, intervalMonths: number | 
 }
 
 /**
+ * The line a libreta shows for a species our reference data has no vaccine
+ * calendar for — in place of a recommended list it would have to invent.
+ * ONE string for the web libreta and the app (which receives it on the wire).
+ */
+export function noReferenceCalendarNote(species: string): string {
+  const who = species === "other" ? "esta especie" : speciesLabelPlural(species).toLowerCase();
+  return `No tenemos un calendario de vacunas de referencia para ${who}.`;
+}
+
+/**
  * Build the per-vaccine snapshot for a pet. For every core vaccine of the
  * pet's species (and every non-core vaccine that has at least one event),
  * we find the latest vaccination_administered event and classify it.
@@ -260,58 +281,85 @@ export function computeVaccinationSummary(
     }
   }
 
-  // Core vaccines for this species always surface (so missing ones are
-  // visible). Non-core vaccines surface only when the owner has logged at
-  // least one dose, so we don't dilute the headline with shots most pets
-  // never need.
-  const candidates = new Map(
-    vaccinesForSpecies(species)
-      .filter((v) => v.isCore)
-      .map((v) => [v.name, v]),
-  );
+  // The recommended calendar surfaces in full (so a missing requirement is
+  // visible); everything else surfaces only when the owner has logged at least
+  // one dose, so we don't dilute the headline with shots most pets never need.
+  //
+  // A requirement with alternatives (the dog's polyvalent shot: Séxtuple OR
+  // Quíntuple) is ONE line of the calendar. Each member that HAS a dose surfaces
+  // as itself; when none does, the requirement surfaces once, under its group
+  // label. A species with no calendar in our reference data (ferret, rabbit…)
+  // surfaces only what was recorded — `calendar` is null and nothing is owed.
+  const calendar = recommendedCalendarForSpecies(species);
+  const shown: VaccineDef[] = [];
+  const shownNames = new Set<string>();
+  const pendingRequirements: { label: string; afterIndex: number }[] = [];
+  for (const requirement of calendar ?? []) {
+    const dosed = requirement.members.filter((m) => latestByVaccine.has(m.name));
+    if (dosed.length === 0) {
+      pendingRequirements.push({ label: requirement.label, afterIndex: shown.length });
+      continue;
+    }
+    for (const m of dosed) {
+      shown.push(m);
+      shownNames.add(m.name);
+    }
+  }
   for (const name of latestByVaccine.keys()) {
-    if (!candidates.has(name)) {
-      const def = findVaccineByName(name);
-      if (def) candidates.set(name, def);
+    if (shownNames.has(name)) continue;
+    const def = findVaccineByName(name);
+    if (def) {
+      shown.push(def);
+      shownNames.add(name);
     }
   }
 
   // At least one dose on file whose name the catalog could not resolve. While
-  // this is true, an unmatched core vaccine cannot be reported as never given —
+  // this is true, an unmet requirement cannot be reported as never given —
   // one of these doses may BE it.
   const hasUnidentifiedDoses = otherNames.size > 0;
 
+  // Reached only for calendar requirements with no dose (non-calendar vaccines
+  // without a dose were never added above). "missing" is an ASSERTION — it
+  // tells an owner their animal never got this vaccine — and it is only
+  // defensible when nothing on file could plausibly be it.
+  //
+  // The catalog entry is "Séxtuple (DHPPi-L)"; a vet signed a dose named
+  // "Séxtuple". findVaccineByName is key equality, so the signed dose landed in
+  // `otherNames` and this requirement reported `missing` — the libreta told the
+  // owner "2 vacunas del calendario recomendado sin aplicar" roughly five
+  // centimetres above the matrícula-signed record of one of them (live review
+  // 2026-07-28).
+  //
+  // PO decision 2026-07-28: keep exact matching — fuzzy-matching a medical
+  // record risks asserting a vaccine nobody gave, which is the worse error — but
+  // never assert the ABSENCE while an unidentified dose is on file.
+  // `unconfirmed` says what is actually known: we cannot match it, so we are not
+  // going to claim either way. (The vet-facing gate does fuzzy-match at 0.85;
+  // there it is a SUGGESTION a professional confirms, here it would be an
+  // assertion to an owner who cannot.)
+  const unmetSnapshot = (label: string): VaccineSnapshot => ({
+    vaccineName: label,
+    lastDoseAt: null,
+    nextDueAt: null,
+    status: hasUnidentifiedDoses ? "unconfirmed" : "missing",
+  });
+
   const perVaccine: VaccineSnapshot[] = [];
-  for (const def of candidates.values()) {
-    const latest = latestByVaccine.get(def.name) ?? null;
-    if (!latest) {
-      // Reached only for core vaccines (non-cores without a dose were filtered
-      // out above). "missing" is an ASSERTION — it tells an owner their animal
-      // never got this vaccine — and it is only defensible when nothing on file
-      // could plausibly be it.
-      //
-      // The catalog entry is "Séxtuple (DHPPi-L)"; a vet signed a dose named
-      // "Séxtuple". findVaccineByName is key equality, so the signed dose
-      // landed in `otherNames` and this core entry reported `missing` — the
-      // libreta told the owner "2 vacunas del calendario recomendado sin
-      // aplicar" roughly five centimetres above the matrícula-signed record of
-      // one of them (live review 2026-07-28).
-      //
-      // PO decision 2026-07-28: keep exact matching — fuzzy-matching a medical
-      // record risks asserting a vaccine nobody gave, which is the worse error
-      // — but never assert the ABSENCE while an unidentified dose is on file.
-      // `unconfirmed` says what is actually known: we cannot match it, so we
-      // are not going to claim either way. (The vet-facing gate does fuzzy-
-      // match at 0.85; there it is a SUGGESTION a professional confirms, here
-      // it would be an assertion to an owner who cannot.)
-      perVaccine.push({
-        vaccineName: def.name,
-        lastDoseAt: null,
-        nextDueAt: null,
-        status: hasUnidentifiedDoses ? "unconfirmed" : "missing",
-      });
-      continue;
+  let pendingCursor = 0;
+  const flushPendingUpTo = (index: number) => {
+    while (
+      pendingCursor < pendingRequirements.length &&
+      pendingRequirements[pendingCursor].afterIndex <= index
+    ) {
+      perVaccine.push(unmetSnapshot(pendingRequirements[pendingCursor].label));
+      pendingCursor++;
     }
+  };
+  shown.forEach((def, index) => {
+    flushPendingUpTo(index);
+    const latest = latestByVaccine.get(def.name);
+    if (!latest) return;
     const nextDueAt = latest.nextDueAt;
     if (!nextDueAt) {
       perVaccine.push({
@@ -320,7 +368,7 @@ export function computeVaccinationSummary(
         nextDueAt: null,
         status: "active",
       });
-      continue;
+      return;
     }
     const msUntilDue = nextDueAt.getTime() - now.getTime();
     let status: VaccineSnapshot["status"];
@@ -334,7 +382,8 @@ export function computeVaccinationSummary(
       status,
       dueSource: latest.dueSource,
     });
-  }
+  });
+  flushPendingUpTo(Number.POSITIVE_INFINITY);
 
   let active = 0;
   let dueSoon = 0;
@@ -357,6 +406,8 @@ export function computeVaccinationSummary(
     unconfirmed,
     otherCount: otherNames.size,
     perVaccine,
+    hasReferenceCalendar: calendar !== null,
+    calendarNote: calendar === null ? noReferenceCalendarNote(species) : null,
   };
 }
 
