@@ -11,10 +11,8 @@
 // `undefined`. So the shared pieces move BELOW both doors, and `register-pet.ts`
 // re-exports them so every existing import path keeps working.
 //
-// Keep this file free of imports from other schema modules; `zod` is the only
-// dependency it may have.
-
-import { z } from "zod";
+// Keep this file free of imports from other schema modules. Its age PARSING
+// moved to `stated-age.ts` (alta-validacion-edad); only the ceilings stay here.
 
 /**
  * How the animal came to live with this person. Optional everywhere — an owner
@@ -31,7 +29,9 @@ export const ACQUISITION_METHODS = [
 export type AcquisitionMethod = (typeof ACQUISITION_METHODS)[number];
 
 /**
- * The upper bound on a stated age, in YEARS.
+ * The upper bound on a stated age, in YEARS — the cap `other` gets
+ * (`MAX_STATED_AGE_YEARS_OTHER` in `reference/pet-age.ts` restates it), and the
+ * bound that keeps the age → date derivation well-formed for every species.
  *
  * 250 is not a guess at how long a pet lives — it is the point past which a
  * number is certainly not an age. The bound has to exist at all because the
@@ -48,45 +48,12 @@ export type AcquisitionMethod = (typeof ACQUISITION_METHODS)[number];
  * animal on record several times over while keeping the derived date a
  * well-formed four-digit ISO year (worst case: 500 years back, ~1526).
  *
- * WHY IT CLAMPS INSTEAD OF REFUSING. An age field is an ESTIMATE, and rejecting
- * "aprox 2" would block a registration over a guess. The ceiling exists to keep
- * the DERIVATION well-formed, not to police data quality — and 250 was chosen
- * partly so a clamped value cannot masquerade as a real one. A pet recorded as
- * 250 years old is visibly a typo somebody can fix; one clamped to 40 looks like
- * a fact.
+ * IT NO LONGER CLAMPS (alta-validacion-edad, 2026-10-07). The `ageCount` that
+ * clamped to it let "3310 años" through as 250; both doors now REFUSE an age
+ * past the species' cap (`stated-age.ts`), and every other species is capped
+ * well below this.
  */
 export const MAX_PET_AGE_YEARS = 250;
 
 /** The same bound expressed in months, so an owner may state the whole age either way. */
 export const MAX_PET_AGE_MONTHS = MAX_PET_AGE_YEARS * 12;
-
-/**
- * A whole-number count of years or months, as the owner typed it. Absent,
- * blank or `null` → null; unparseable → 0; negatives clamp to 0; anything past
- * `max` clamps to `max` (see MAX_PET_AGE_YEARS).
- *
- * Otherwise byte-identical to the wizard's behaviour
- * (`Math.max(0, parseInt(x) || 0)`) and intentional. Accepts a NUMBER too,
- * which the FormData path could not — a JSON client has no reason to quote an
- * integer. Accepts `null` because that is what this very transform emits for
- * an untouched field, and a client sends the transform's output back.
- */
-export const ageCount = (max: number) =>
-  z
-    .union([z.string(), z.number()])
-    .nullish()
-    .transform((v) => {
-      if (v === undefined || v === null) return null;
-      if (typeof v === "number") {
-        // The `isFinite` arm is a belt, not the guard that matters: `z.number()`
-        // refuses NaN and ±Infinity BEFORE any transform runs (measured against
-        // zod 4), so a wire body carrying one is rejected outright — and neither
-        // can come out of `JSON.parse` anyway. This covers a caller that builds
-        // the object in-process.
-        return Number.isFinite(v) ? Math.min(max, Math.max(0, Math.trunc(v))) : 0;
-      }
-      const trimmed = v.trim();
-      if (!trimmed) return null;
-      const parsed = Number.parseInt(trimmed, 10);
-      return Number.isNaN(parsed) ? 0 : Math.min(max, Math.max(0, parsed));
-    });

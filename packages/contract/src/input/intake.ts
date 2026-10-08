@@ -104,8 +104,9 @@ const ageCount = z
     // and its input side took only a string, so re-parsing the parsed value
     // failed on every filled age — the `register-pet.ts` round-trip defect with
     // one extra step, since here even a non-blank field breaks it. The number
-    // arm mirrors `pet-profile-fields.ts`'s `ageCount`, which grew the same
-    // union for the same reason: a JSON client has no reason to quote an integer.
+    // arm mirrors the citizen doors' age field (now `stated-age.ts`), which grew
+    // the same union for the same reason: a JSON client has no reason to quote
+    // an integer.
     if (typeof v === "number") return Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0;
     const trimmed = v.trim();
     if (!trimmed) return null;
