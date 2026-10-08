@@ -2758,7 +2758,7 @@
       "enforcer": [
         "scripts/check-rls-coverage.ts:765",
         "package.json:36 lint:rls",
-        "__tests__/rls/coverage.test.ts:234-325",
+        "__tests__/rls/coverage.test.ts:240-331",
         "__tests__/check-rls-coverage.test.ts",
         "__tests__/rls/coverage.test.ts (views run as the caller, not as their owner — A02-3)"
       ],
@@ -2767,7 +2767,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "scripts/check-rls-coverage.ts:765,775-785 fails any public table with relrowsecurity=false or zero policies unless keyed in DENY_ALL_ALLOWLIST (:78), reading pg_class/pg_policies live (:147-155); __tests__/rls/coverage.test.ts:227-260 fails an RLS_REQUIRED table without RLS and any public table classified in neither list. Uncovered clause: nothing fails when an owner-scoped table is missing from the cross-tenant e2e probes — no script or test reads e2e/cross-tenant-isolation.spec.ts's table coverage.",
+      "statusBasis": "scripts/check-rls-coverage.ts:765,775-785 fails any public table with relrowsecurity=false or zero policies unless keyed in DENY_ALL_ALLOWLIST (:78), reading pg_class/pg_policies live (:147-155); __tests__/rls/coverage.test.ts:233-266 fails an RLS_REQUIRED table without RLS and any public table classified in neither list. Uncovered clause: nothing fails when an owner-scoped table is missing from the cross-tenant e2e probes — no script or test reads e2e/cross-tenant-isolation.spec.ts's table coverage.",
       "notes": "Previous basis addressed only the classification half, which I agree is doubly enforced; the trailing e2e-probe clause of the rule text has no enforcer. Both live mechanisms skip loudly when DATABASE_URL is remote/unreachable (script :42-51), so the DB half is real only on the local verify run. Since T3-F1 (A02-7) the 'in its migration' half is also fenced statically by CANON-535 (lint:migration-rls): a migration that creates a public table without enabling RLS on it in the same file fails before any database has it. Views (A02-3, T3-F1): coverage.test.ts enumerates pg_class relkind in ('v','m') over public/pii/ref and fails any view without security_invoker (and any materialised view SELECT-able by anon/authenticated), with an empty shrink-only allowlist and a floor naming the two live views (welfare_report_content, welfare_report_reporter_identity).",
       "confidence": 0.6,
       "verifiedAt": "d7dbf25f7"
@@ -2943,7 +2943,7 @@
         "__tests__/check-subject-rights-coverage.test.ts:1-9,74-171"
       ],
       "enforcer": [
-        "scripts/check-subject-rights-coverage.ts:720",
+        "scripts/check-subject-rights-coverage.ts:729",
         "package.json:40 lint:subject-rights",
         "__tests__/check-subject-rights-coverage.test.ts:57,95,272,279"
       ],
@@ -2951,7 +2951,7 @@
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "scripts/check-subject-rights-coverage.ts:246-345 runs all four checks against the live pg_get_functiondef bodies — unclassified table (:256), a table in two lists (:271), forward direction (an IN_* entry the body does not mention), reverse direction (an EXEMPT/KNOWN_GAP entry the body DOES mention, :339-344) — exiting 1 at :404/:460/:489. The ceiling is pinned in __tests__/check-subject-rights-coverage.test.ts:154-170 in BOTH directions (<=17 at :160 and >=17 at :170), so closing a gap cannot be re-spent.",
+      "statusBasis": "scripts/check-subject-rights-coverage.ts:248-354 runs all four checks against the live pg_get_functiondef bodies — unclassified table (:256), a table in two lists (:271), forward direction (an IN_* entry the body does not mention), reverse direction (an EXEMPT/KNOWN_GAP entry the body DOES mention, :339-344) — exiting 1 at :404/:460/:489. The ceiling is pinned in __tests__/check-subject-rights-coverage.test.ts:154-170 in BOTH directions (<=17 at :160 and >=17 at :170), so closing a gap cannot be re-spent.",
       "notes": "Header :19-28 states the limit honestly: it proves MENTION, not predicate correctness. Same skip-on-non-local-DB contract as lint:spine (:77-80). The ceiling lives in the test, so that half rides test:verified rather than verify.",
       "confidence": 0.85,
       "numberKey": "KNOWN_GAP_CEILING",
@@ -3169,13 +3169,13 @@
         "AGENTS.md:434"
       ],
       "enforcer": [
-        "db/schema.ts:1122-1125"
+        "db/schema.ts:1170-1173"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:1096-1099 declares check ownerships_polymorphic_holder: `((owner_user_id IS NOT NULL)::int + (owner_organization_id IS NOT NULL)::int) = 1` — exactly-one, so neither both-set nor neither-set can be stored. No DROP CONSTRAINT for it in db/migrations.",
+      "statusBasis": "db/schema.ts:1144-1147 declares check ownerships_polymorphic_holder: `((owner_user_id IS NOT NULL)::int + (owner_organization_id IS NOT NULL)::int) = 1` — exactly-one, so neither both-set nor neither-set can be stored. No DROP CONSTRAINT for it in db/migrations.",
       "notes": "Declared, not verified against the live catalog.",
       "confidence": 0.92,
       "verifiedAt": "d7dbf25f7"
@@ -3188,13 +3188,13 @@
         "AGENTS.md:435"
       ],
       "enforcer": [
-        "db/schema.ts:1126-1128"
+        "db/schema.ts:1174-1176"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:1100-1102 declares uniqueIndex ownerships_one_active_owner_per_pet on (pet_id) where `role = 'owner' AND ended_at IS NULL` — a second live owner row on the same pet raises 23505. No DROP INDEX for it in db/migrations.",
+      "statusBasis": "db/schema.ts:1148-1150 declares uniqueIndex ownerships_one_active_owner_per_pet on (pet_id) where `role = 'owner' AND ended_at IS NULL` — a second live owner row on the same pet raises 23505. No DROP INDEX for it in db/migrations.",
       "notes": "Declared, not verified against the live catalog.",
       "confidence": 0.92,
       "verifiedAt": "d7dbf25f7"
@@ -3207,13 +3207,13 @@
         "AGENTS.md:444"
       ],
       "enforcer": [
-        "db/schema.ts:1134-1136"
+        "db/schema.ts:1182-1184"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:1108-1110 declares uniqueIndex ownerships_one_active_caretaker_per_pet on (pet_id) where `role = 'caretaker' AND ended_at IS NULL`; the comment at :1103-1107 states the reason (the owner index is `where role='owner'` and constrained caretaker rows not at all). No DROP INDEX for it in db/migrations.",
+      "statusBasis": "db/schema.ts:1156-1158 declares uniqueIndex ownerships_one_active_caretaker_per_pet on (pet_id) where `role = 'caretaker' AND ended_at IS NULL`; the comment at :1103-1107 states the reason (the owner index is `where role='owner'` and constrained caretaker rows not at all). No DROP INDEX for it in db/migrations.",
       "notes": "Declared, not verified against the live catalog.",
       "confidence": 0.9,
       "verifiedAt": "d7dbf25f7"
@@ -3251,14 +3251,14 @@
         "AGENTS.md:455"
       ],
       "enforcer": [
-        "db/schema.ts:4626-4629"
+        "db/schema.ts:4683-4686"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "db/schema.ts:4213-4216 check cases_opened_reason_structured_pair (`opened_reason_code is null or opened_reason_params is not null`) makes (code, NULL) unrepresentable — the rule's second clause. The `{}` clause is not enforced at write: src/modules/cases/domain/opened-reason.ts:109-208 is a strict discriminated union, but its only parse site is the READ path (opened-reason-display.ts:48); the write path (cases-repository.ts:88, `const { code, ...params } = openedReason`) never parses, so a non-literal carrying extra keys reaches opened_reason_params unchecked.",
+      "statusBasis": "db/schema.ts:4270-4273 check cases_opened_reason_structured_pair (`opened_reason_code is null or opened_reason_params is not null`) makes (code, NULL) unrepresentable — the rule's second clause. The `{}` clause is not enforced at write: src/modules/cases/domain/opened-reason.ts:109-208 is a strict discriminated union, but its only parse site is the READ path (opened-reason-display.ts:48); the write path (cases-repository.ts:88, `const { code, ...params } = openedReason`) never parses, so a non-literal carrying extra keys reaches opened_reason_params unchecked.",
       "notes": "CHANGED FROM MY DRAFT (ENFORCED) after opening opened-reason.ts:109-208 and rg-ing OpenedReasonSchema across src/lib: my draft assumed the closed union was applied at the write door. It is not — the only .parse/.safeParse is on display. tsc's excess-property check still catches literal call sites, and check-opened-reason-coverage.ts:25-27,51 confines the write to cases-repository.ts, so practical coverage is high; the named residue (param-less code + junk params) is real and matches the previous basis and the judge.",
       "confidence": 0.7,
       "verifiedAt": "d7dbf25f7"
@@ -3271,13 +3271,13 @@
         "AGENTS.md:483"
       ],
       "enforcer": [
-        "db/schema.ts:4952-4954"
+        "db/schema.ts:5009-5011"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:4539-4541 declares uniqueIndex pet_transfers_one_pending_per_pet on (pet_id) where `status = 'pending'` — the second concurrent pending transfer on one pet raises 23505; closed transfers are outside the predicate so retries stay possible (rationale at :4536-4538). No DROP INDEX for it in db/migrations.",
+      "statusBasis": "db/schema.ts:4596-4598 declares uniqueIndex pet_transfers_one_pending_per_pet on (pet_id) where `status = 'pending'` — the second concurrent pending transfer on one pet raises 23505; closed transfers are outside the predicate so retries stay possible (rationale at :4536-4538). No DROP INDEX for it in db/migrations.",
       "notes": "Declared, not verified against the live catalog.",
       "confidence": 0.92,
       "verifiedAt": "d7dbf25f7"
@@ -3290,13 +3290,13 @@
         "AGENTS.md:496"
       ],
       "enforcer": [
-        "db/schema.ts:5040-5042"
+        "db/schema.ts:5097-5099"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:4627-4629 declares uniqueIndex pet_identifications_chip_unique on (code) where `kind = 'microchip_iso' AND status = 'active'` — active chips cannot collide, and the predicate leaves tattoo rows (and retired chips) unconstrained, exactly as the rule says. No DROP INDEX for it in db/migrations.",
+      "statusBasis": "db/schema.ts:4684-4686 declares uniqueIndex pet_identifications_chip_unique on (code) where `kind = 'microchip_iso' AND status = 'active'` — active chips cannot collide, and the predicate leaves tattoo rows (and retired chips) unconstrained, exactly as the rule says. No DROP INDEX for it in db/migrations.",
       "notes": "Declared, not verified against the live catalog. Sibling CHECK chip_requires_iso_fields at :4630-4633 pins the 15-char length (see CANON-499).",
       "confidence": 0.92,
       "verifiedAt": "d7dbf25f7"
@@ -3893,7 +3893,7 @@
         "scripts/check-audit-log-coverage.ts:14-18",
         "package.json:20 lint:audit-log",
         "scripts/check-audit-log-actions-declared.ts",
-        "db/schema.ts:2800"
+        "db/schema.ts:2848"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
@@ -4220,13 +4220,13 @@
       ],
       "enforcer": [
         "__tests__/event-schemas.test.ts:27-40",
-        "db/schema.ts:1332"
+        "db/schema.ts:1380"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "__tests__/event-schemas.test.ts:28-31 asserts IMPLEMENTED_EVENT_TYPES equals EVENT_TYPES minus UNIMPLEMENTED, and UNIMPLEMENTED is [] at :25 — the strictest state, so a new entry in the const without a schema in lib/events/event-schemas.ts fails in the same run. db/schema.ts:1289 keeps event_type a plain text column ('validated in app code against EVENT_TYPES'), so the 'no migration' half is structurally true.",
+      "statusBasis": "__tests__/event-schemas.test.ts:28-31 asserts IMPLEMENTED_EVENT_TYPES equals EVENT_TYPES minus UNIMPLEMENTED, and UNIMPLEMENTED is [] at :25 — the strictest state, so a new entry in the const without a schema in lib/events/event-schemas.ts fails in the same run. db/schema.ts:1337 keeps event_type a plain text column ('validated in app code against EVENT_TYPES'), so the 'no migration' half is structurally true.",
       "notes": "The empty UNIMPLEMENTED list is an escape hatch that is currently closed; adding a name to it would silently exempt that type. The const now lives in packages/contract/src/events/event-types.ts:20 and is re-exported by db/schema.ts:289, so the rule's 'in db/schema.ts' wording is stale.",
       "confidence": 0.75,
       "verifiedAt": "d7dbf25f7"
@@ -4246,7 +4246,7 @@
       "status": "PARTIAL",
       "partialShape": "adoption-unfenced",
       "clause": "R7",
-      "statusBasis": "__tests__/event-schemas.test.ts:33-40 fails on any PayloadSchemas key absent from EVENT_TYPES and :28-31 fails the reverse, so removal from one registry forces removal from the other. The 'so no flow can write them' half rests on every writer calling validateEventPayload (its throw is pinned at :42-46); db/schema.ts:1289 says event_type is 'validated in app code', and no fence forces that door.",
+      "statusBasis": "__tests__/event-schemas.test.ts:33-40 fails on any PayloadSchemas key absent from EVENT_TYPES and :28-31 fails the reverse, so removal from one registry forces removal from the other. The 'so no flow can write them' half rests on every writer calling validateEventPayload (its throw is pinned at :42-46); db/schema.ts:1337 says event_type is 'validated in app code', and no fence forces that door.",
       "notes": "v3 chose partialShape 'subset' on a different gap — nothing decides that a type IS deprecated, so the rule's trigger has no enforcer. Both gaps are real; the deciding one for the rule's last clause is adoption of the validating writer.",
       "confidence": 0.68,
       "verifiedAt": "d7dbf25f7"
@@ -4305,7 +4305,7 @@
       "enforcementKind": "none",
       "wired": "none",
       "status": "UNENFORCED",
-      "statusBasis": "A design pattern for a class of flows, with no fence enumerating the class. The pet_transfers instance has a DB partial unique index for the concurrency half (db/schema.ts:4539) but nothing asserts the lazy-cancel behaviour as a general rule.",
+      "statusBasis": "A design pattern for a class of flows, with no fence enumerating the class. The pet_transfers instance has a DB partial unique index for the concurrency half (db/schema.ts:4596) but nothing asserts the lazy-cancel behaviour as a general rule.",
       "confidence": 0.82,
       "verifiedAt": "d7dbf25f7"
     },
@@ -8764,7 +8764,7 @@
       "rule": "A microchip identification's code must be exactly 15 characters and non-null (`chip_requires_iso_fields`), and a profile's dni_hash must be unique when present (`profiles_dni_hash_unique`).",
       "scope": "db",
       "sources": [
-        "db/schema.ts:4731-4734, db/schema.ts:414-416"
+        "db/schema.ts:4788-4791, db/schema.ts:414-416"
       ],
       "enforcer": [
         "db/schema.ts"
@@ -8773,7 +8773,7 @@
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:4630-4633 declares check chip_requires_iso_fields: `kind <> 'microchip_iso' OR (code IS NOT NULL AND length(code) = 15)` — exactly 15 and non-null, both halves. db/schema.ts:414-416 declares uniqueIndex profiles_dni_hash_unique on (dni_hash) where `dni_hash IS NOT NULL` — unique when present. No DROP for either in db/migrations.",
+      "statusBasis": "db/schema.ts:4687-4690 declares check chip_requires_iso_fields: `kind <> 'microchip_iso' OR (code IS NOT NULL AND length(code) = 15)` — exactly 15 and non-null, both halves. db/schema.ts:414-416 declares uniqueIndex profiles_dni_hash_unique on (dni_hash) where `dni_hash IS NOT NULL` — unique when present. No DROP for either in db/migrations.",
       "notes": "Declared, not verified against the live catalog.",
       "confidence": 0.9,
       "verifiedAt": "d7dbf25f7"

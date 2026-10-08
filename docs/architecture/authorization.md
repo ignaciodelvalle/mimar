@@ -401,11 +401,11 @@ nothing makes every caller read as guarded, which happened once in
 
 The full inventory is `docs/architecture/rls-coverage.md`. The short version:
 
-- <!-- fact:rls_enabled_tables -->67<!-- /fact --> distinct tables are DECLARED
+- <!-- fact:rls_enabled_tables -->68<!-- /fact --> distinct tables are DECLARED
   with `ENABLE ROW LEVEL SECURITY` across `db/migrations` and the `db/*.sql`
   snapshots. That is a count of declarations, not a live catalog reading — the
   live authority is `__tests__/rls` against `pg_class.relrowsecurity`.
-- <!-- fact:security_definer_functions -->17<!-- /fact --> functions are declared
+- <!-- fact:security_definer_functions -->19<!-- /fact --> functions are declared
   `SECURITY DEFINER`. Each one is a deliberate privilege escalation with its
   caller check inside its own body.
 - RLS governs the PostgREST surface only. It never affects the action edge,
