@@ -247,7 +247,7 @@ describe("quick doors — four doors in the hero, no account", () => {
     expect(html).toContain("Vi un caso de maltrato");
     expect(html.match(/<a /g)).toHaveLength(4);
     for (const href of [
-      'href="/perdidas"',
+      'href="/encontre-un-animal"',
       'href="/adoptar"',
       'href="/refugios"',
       'href="/denuncias/nueva"',

@@ -141,13 +141,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // /perdidas surfaces every pet currently in status='lost'. Hourly because
     // marked-lost / marked-found are owner actions that can land any moment.
     { url: `${SITE_URL}/perdidas`, changeFrequency: "hourly", priority: 0.9 },
+    // "Encontré un animal" (P4): what to do with an animal that has no tag or
+    // QR — the chip, the lost board, then who receives found animals nearby.
+    { url: `${SITE_URL}/encontre-un-animal`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/denuncias/nueva`, changeFrequency: "monthly", priority: 0.6 },
     // The page for municipal and provincial Zoonosis offices (WU5).
     { url: `${SITE_URL}/municipios`, changeFrequency: "monthly", priority: 0.7 },
   ];
 
   // A MISSED DEADLINE FAILS THE ROUTE, deliberately, instead of degrading to the
-  // five static entries. A crawler that gets a 5xx keeps the sitemap it already
+  // six static entries. A crawler that gets a 5xx keeps the sitemap it already
   // has and retries; a crawler that gets a 200 with four URLs takes it as the
   // new truth. The truncated answer is the confident wrong one.
   const load = await loadWithTimeout(loadSitemapRowsCached(), SITEMAP_LOAD_TIMEOUT_MS);

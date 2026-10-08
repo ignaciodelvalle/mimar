@@ -180,6 +180,17 @@ export default async function PerdidasPage({
             Animales marcados como perdidos por sus dueños. Si reconocés alguno o lo viste cerca,
             abrí su credencial y dejá tu contacto — el dueño recibe la notificación al instante.
           </p>
+          <p className="text-sm text-[var(--color-ln-mute)]">
+            ¿Encontraste uno sin chapita ni QR?{" "}
+            {/* A plain <a>: the anonymous finder's path hard-navigates
+                (lint:hard-nav — soft nav stalls the crisis path). */}
+            <a
+              href="/encontre-un-animal"
+              className="font-medium text-[var(--color-ln-azul)] underline underline-offset-4"
+            >
+              Mirá qué hacer
+            </a>
+          </p>
         </header>
 
         {/* KPI strip — universe counts, not filter-scoped. The two recency tiles

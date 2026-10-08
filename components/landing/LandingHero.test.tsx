@@ -206,7 +206,7 @@ describe("<LandingHero> — four quick doors replace the CTA row (PO 2026-10-02)
     const doors = screen.getByRole("navigation", { name: "Accesos rápidos — sin cuenta" });
     const links = within(doors).getAllByRole("link");
     expect(links.map((l) => l.getAttribute("href"))).toEqual([
-      "/perdidas",
+      "/encontre-un-animal",
       "/adoptar",
       "/refugios",
       "/denuncias/nueva",
