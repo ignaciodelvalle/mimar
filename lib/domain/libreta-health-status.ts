@@ -15,6 +15,7 @@
 import {
   RABIES_VACCINE_NAME,
   findVaccineByName,
+  isPlainRabiesVaccineName,
   isRabiesVaccineName,
   vaccineNameKey,
   vaccinesForSpecies,
@@ -223,10 +224,18 @@ export function computeVaccinationSummary(
     // catalog does not resolve but the credential front reads as rabies
     // ("Rabia", "DHPP + antirrábica") counts as the catalog's rabies entry here
     // too. A combined entry counts for rabies ONLY — its other components are
-    // never inferred.
+    // never inferred: a rabies-family name that is more than a plain rabies
+    // name ALSO stays in `otherNames`, so the unidentified-dose flag holds and
+    // Séxtuple/Quíntuple read "unconfirmed" rather than "never given" — the
+    // dog plainly received SOMETHING besides rabies (PO 2026-07-28 rule below).
+    const catalogDef = findVaccineByName(rawName);
     const def =
-      findVaccineByName(rawName) ??
+      catalogDef ??
       (isRabiesVaccineName(rawName) ? findVaccineByName(RABIES_VACCINE_NAME) : null);
+    if (def && !catalogDef && !isPlainRabiesVaccineName(rawName)) {
+      const normalized = vaccineNameKey(rawName);
+      if (normalized) otherNames.add(normalized);
+    }
     if (!def) {
       // Free-text vaccine outside the catalog — count it (deduped by name) so
       // it appears in the libreta instead of disappearing. We deliberately do

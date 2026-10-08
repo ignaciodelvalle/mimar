@@ -154,11 +154,21 @@ describe("front and back agree on the same asiento", () => {
     expect(backHasRabies).toBe(isRabies);
   });
 
-  it("a combined entry counts for rabies only — its other components are not inferred", () => {
+  it("a combined entry counts for rabies and leaves the other cores unconfirmed, never 'never given'", () => {
     const summary = back("DHPP + antirrábica");
     expect(backStatus("DHPP + antirrábica", RABIES_VACCINE_NAME)).toBe("active");
-    expect(backStatus("DHPP + antirrábica", "Séxtuple (DHPPi-L)")).toBe("missing");
-    expect(backStatus("DHPP + antirrábica", "Quíntuple (DHPPi)")).toBe("missing");
+    // Not inferred as given, and not asserted as absent either: the dog plainly
+    // got a DHPP-something the catalog cannot name (PO 2026-07-28).
+    expect(backStatus("DHPP + antirrábica", "Séxtuple (DHPPi-L)")).toBe("unconfirmed");
+    expect(backStatus("DHPP + antirrábica", "Quíntuple (DHPPi)")).toBe("unconfirmed");
+    expect(summary.otherCount).toBe(1);
+  });
+
+  it("a plain rabies name ('Rabia') leaves the other cores missing", () => {
+    const summary = back("Rabia");
+    expect(backStatus("Rabia", RABIES_VACCINE_NAME)).toBe("active");
+    expect(backStatus("Rabia", "Séxtuple (DHPPi-L)")).toBe("missing");
+    expect(backStatus("Rabia", "Quíntuple (DHPPi)")).toBe("missing");
     expect(summary.otherCount).toBe(0);
   });
 

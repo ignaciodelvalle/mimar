@@ -110,23 +110,50 @@ export function findVaccineByName(name: string): VaccineDef | null {
 /** The catalog's rabies entry name. */
 export const RABIES_VACCINE_NAME = "Antirrábica";
 
-// The rabies FAMILY as the credential has always read it ("antirr[aá]b" or
-// "rabi" anywhere in the name), applied to the folded key so an accent or a
-// capital can never split the two sides again.
-const RABIES_FAMILY_IN_KEY = /antirrab|rabi/;
+/**
+ * The rabies FAMILY ("antirrab" or "rabi" anywhere in the name) as a POSIX/JS
+ * regex source, to be applied ONLY to a folded name: `vaccineNameKey` in
+ * TypeScript, `unaccent(lower(name))` in SQL (`rabiesVaccineNameSql` in
+ * lib/metrics/rabies.ts). The same source on both sides is what keeps a SQL
+ * metric and a TS surface from disagreeing over an accent, a capital, a
+ * decomposed "á" or "Rabia" (surface audit 2026-10-07, A).
+ */
+export const RABIES_FAMILY_PATTERN = "antirrab|rabi";
+
+const RABIES_FAMILY_IN_KEY = new RegExp(RABIES_FAMILY_PATTERN);
 
 /**
- * Whether a recorded vaccine name is a rabies dose, for the compliance card on
- * the credential front.
+ * Whether a recorded vaccine name is a rabies dose — THE rabies matcher for
+ * every TypeScript surface (credential front, libreta, badges, surveillance).
  *
  * Built on the same key as `findVaccineByName`, and a strict superset of it for
  * rabies: every name the libreta resolves to "Antirrábica" is a rabies dose
- * here too (tested), so the front and the back can no longer disagree over an
- * accent, a capital or a space. The family pattern keeps recognising composite
- * names the catalog does not resolve ("DHPP + antirrábica") — that is the
- * existing credential behaviour, not a new alias.
+ * here too (tested). The family pattern also recognises composite names the
+ * catalog does not resolve ("DHPP + antirrábica") — for RABIES only; nothing
+ * about the other components is inferred (see `isPlainRabiesVaccineName`).
  */
-export function isRabiesVaccineName(name: string): boolean {
+export function isRabiesVaccineName(name: unknown): boolean {
+  if (typeof name !== "string") return false;
   if (findVaccineByName(name)?.name === RABIES_VACCINE_NAME) return true;
   return RABIES_FAMILY_IN_KEY.test(vaccineNameKey(name));
+}
+
+// Names that say "rabies" and nothing else. Anything longer ("DHPP +
+// antirrábica", "antirrábica refuerzo") may carry other components.
+const PLAIN_RABIES_KEYS: ReadonlySet<string> = new Set([
+  "rabia",
+  "rabies",
+  "antirrabica",
+  "vacuna antirrabica",
+  "vacuna contra la rabia",
+]);
+
+/**
+ * True when the name is ONLY a rabies vaccine. A rabies-family name that is not
+ * plain is a dose that ALSO counts as something unidentified — the libreta
+ * keeps it in its off-catalog set so the other core vaccines stay
+ * "unconfirmed" instead of being asserted as never given (PO 2026-07-28).
+ */
+export function isPlainRabiesVaccineName(name: string): boolean {
+  return PLAIN_RABIES_KEYS.has(vaccineNameKey(name));
 }
