@@ -178,6 +178,16 @@ describe("validateFoundAnimalIntake", () => {
     expect(validateFoundAnimalIntake({ ...input, publicHours: "x".repeat(121) }).ok).toBe(false);
   });
 
+  it("refuses a phone number typed into the published hours, keeps ordinary hours", () => {
+    for (const hours of ["Llamar al 11 5555-0000", "4555 0000", "(011) 4555.0000"]) {
+      const r = validateFoundAnimalIntake({ ...input, publicHours: hours });
+      expect(r).toEqual({ ok: false, error: expect.stringMatching(/número de teléfono/) });
+    }
+    for (const hours of ["Lunes a viernes de 10 a 17", "9:30 a 13 y 16 a 20", "lun-vie 8 a 12"]) {
+      expect(validateFoundAnimalIntake({ ...input, publicHours: hours }).ok).toBe(true);
+    }
+  });
+
   it("turns a contact into a safe link, or none", () => {
     expect(intakeContactHref("telefono", "011 4555-0000")).toBe("tel:01145550000");
     expect(intakeContactHref("whatsapp", "+54 9 11 5555-0000")).toBe("https://wa.me/5491155550000");

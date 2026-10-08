@@ -33,10 +33,12 @@ import {
   FOUND_ANIMAL_INTAKE_ORG_TYPES,
   FOUND_HELP_ORG_TYPE_LABELS,
   INTAKE_CAPACITY_LABELS,
+  INTAKE_CONFIRMATION_DAYS,
   INTAKE_CONTACT_KIND_LABELS,
   intakeContactHref,
   isIntakeCapacityStatus,
   isIntakeContactKind,
+  publicCapacityStatus,
 } from "@/src/modules/organizations/domain/found-animal-intake";
 import {
   type GeoPoint,
@@ -94,6 +96,8 @@ type OrgCardRow = {
 
 type IntakeCardRow = {
   capacityStatus: string;
+  /** Not saved for INTAKE_CONFIRMATION_DAYS — decided in SQL, on the DB clock. */
+  confirmationExpired: boolean;
   publicContactKind: string | null;
   publicContactValue: string | null;
   publicHours: string | null;
@@ -117,7 +121,7 @@ function receiverCard(row: OrgCardRow & IntakeCardRow, distance: string): Nearby
     locality: row.jurisdictionLocality,
     distanceLabel: distance,
     capacityLabel: isIntakeCapacityStatus(row.capacityStatus)
-      ? INTAKE_CAPACITY_LABELS[row.capacityStatus]
+      ? INTAKE_CAPACITY_LABELS[publicCapacityStatus(row.capacityStatus, row.confirmationExpired)]
       : null,
     contact,
     hours: row.publicHours,
@@ -139,6 +143,7 @@ function vetCard(row: OrgCardRow, distance: string): NearbyOrgCard {
 
 const intakeCardColumns = {
   capacityStatus: orgFoundAnimalIntake.capacityStatus,
+  confirmationExpired: sql<boolean>`(${orgFoundAnimalIntake.updatedAt} < now() - make_interval(days => ${INTAKE_CONFIRMATION_DAYS}::int))`,
   publicContactKind: orgFoundAnimalIntake.publicContactKind,
   publicContactValue: orgFoundAnimalIntake.publicContactValue,
   publicHours: orgFoundAnimalIntake.publicHours,

@@ -54,6 +54,23 @@ export const INTAKE_CAPACITY_LABELS: Readonly<Record<IntakeCapacityStatus, strin
   sin_lugar: "Sin lugar por ahora",
 };
 
+/**
+ * How long a "Recibimos" stays true without an admin saving the card again.
+ * Past it the PUBLIC list shows "Consultar antes" — a stale "we have room" is
+ * how a finder arrives with an animal at a full shelter — and the settings
+ * card reminds the admin. The other two statuses never go stale: both already
+ * tell the finder to ask first.
+ */
+export const INTAKE_CONFIRMATION_DAYS = 30;
+
+/** The status a finder sees, given whether the org confirmed it recently. */
+export function publicCapacityStatus(
+  status: IntakeCapacityStatus,
+  confirmationExpired: boolean,
+): IntakeCapacityStatus {
+  return status === "recibimos" && confirmationExpired ? "consultar" : status;
+}
+
 export function isIntakeCapacityStatus(value: string): value is IntakeCapacityStatus {
   return (INTAKE_CAPACITY_STATUSES as readonly string[]).includes(value);
 }
@@ -84,6 +101,12 @@ export const INTAKE_HOURS_MAX = 120;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_RE = /^https:\/\/[^\s.]+\.[^\s]{2,}$/;
 const PHONE_RE = /^\+?[0-9][0-9 ()-]{5,}$/;
+/**
+ * Seven or more digits in a row (spaces, dots, dashes and parentheses
+ * between them allowed): a phone number typed into the free-text hours, which
+ * are published as-is. "10 a 17", "9:30 a 13" and "lun-vie" pass.
+ */
+const PHONE_LIKE_RUN = /\d(?:[\s().-]*\d){6,}/;
 
 export type FoundAnimalIntakeSettings = {
   accepting: boolean;
@@ -151,6 +174,13 @@ export function validateFoundAnimalIntake(
     if (kind === "web" && !URL_RE.test(value)) {
       return { ok: false, error: "El sitio web debe empezar con https://." };
     }
+  }
+  if (hours !== null && PHONE_LIKE_RUN.test(hours)) {
+    return {
+      ok: false,
+      error:
+        "Los horarios no pueden incluir un número de teléfono. Si querés publicar uno, usá el contacto público.",
+    };
   }
   if (hours !== null && hours.length > INTAKE_HOURS_MAX) {
     return {
