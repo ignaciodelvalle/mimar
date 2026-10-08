@@ -293,6 +293,41 @@ describe("org_found_animal_intake — every change is audited", () => {
     expect(JSON.stringify(latest.payload)).not.toContain("4777-0199");
   });
 
+  it("records THAT the published hours changed, never the text itself", async () => {
+    await setIntake(ids.org, ids.admin, {
+      capacityStatus: "sin_lugar",
+      publicContactKind: "telefono",
+      publicContactValue: "+54 11 4777-0199",
+      publicHours: "Sábados de 10 a 14 en la sede Norte",
+    });
+    const [latest] = await auditRows(ids.org);
+    expect(latest.payload).toMatchObject({
+      public_hours_changed: true,
+      public_contact_value_changed: false,
+      after_values: { public_hours_published: true },
+    });
+    expect(JSON.stringify(latest.payload)).not.toContain("sede Norte");
+  });
+
+  it("updated_at may move into the past, never into the future", async () => {
+    const future = await asRole<{ fresh: boolean }>(
+      "authenticated",
+      ids.admin,
+      sql`UPDATE public.org_found_animal_intake SET updated_at = now() + interval '365 days'
+           WHERE organization_id = ${ids.org}::uuid
+       RETURNING updated_at <= now() AS fresh`,
+    );
+    expect(future).toEqual([{ fresh: true }]);
+    const past = await asRole<{ backdated: boolean }>(
+      "authenticated",
+      ids.admin,
+      sql`UPDATE public.org_found_animal_intake SET updated_at = now() - interval '40 days'
+           WHERE organization_id = ${ids.org}::uuid
+       RETURNING updated_at < now() - interval '39 days' AS backdated`,
+    );
+    expect(past).toEqual([{ backdated: true }]);
+  });
+
   it("a write with no accountable actor is refused", async () => {
     const code = await errorCodeOf(
       db
