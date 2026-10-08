@@ -582,6 +582,83 @@ describe("export shapes: export { a } / export { a as b } of a local action", ()
   });
 });
 
+describe("export shapes: default exports, property reads and bound actions", () => {
+  it("FLAGS an unscoped `export default async () => {}` under the key `default`", () => {
+    const src = `export default async (id: string) => ${UNSCOPED_BODY};`;
+    expect(findScopingOffenders("app/actions/x.ts", src, noModules)).toEqual([
+      "app/actions/x.ts#default",
+    ]);
+  });
+
+  it("does not flag a scoped `export default async () => {}`", () => {
+    const src = `export default async (id: string) => ${SCOPED_BODY};`;
+    expect(analyzeActions("app/actions/x.ts", src, noModules)).toMatchObject([
+      { name: "default", subject: true },
+    ]);
+    expect(findScopingOffenders("app/actions/x.ts", src, noModules)).toEqual([]);
+  });
+
+  it("an action read off an object (`export const f = ns.action`) is UNRESOLVED, never silent", () => {
+    const vs = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        'import * as ns from "@/lib/actions";',
+        "export const f = ns.action;",
+        'export const g = actions["approve"];',
+      ),
+      noModules,
+    );
+    expect(vs.map((v) => [v.name, v.unresolved !== undefined])).toEqual([
+      ["f", true],
+      ["g", true],
+    ]);
+  });
+
+  it("a BOUND action (`export const f = a.bind(null, x)`) is UNRESOLVED; binding a non-action is not an action", () => {
+    const vs = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        `async function a(id: string) ${UNSCOPED_BODY}`,
+        "function sync(id: string) { return id; }",
+        'export const f = a.bind(null, "x");',
+        'export const h = sync.bind(null, "x");',
+      ),
+      noModules,
+    );
+    expect(vs).toHaveLength(1);
+    expect(vs[0]).toMatchObject({ name: "f" });
+    expect(vs[0].unresolved).toMatch(/wraps an action in a\.bind\(\)/);
+  });
+
+  it("a nested `function guard() {}` that shadows an imported guard alias is the local, not the guard", () => {
+    const shadowed = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        'import { requireAdminOrRedirect as guard } from "@/lib/infra/auth-guards";',
+        "export async function a(id: string) {",
+        "  function guard(x: string) { return x; }",
+        "  return w(guard(id));",
+        "}",
+      ),
+      noModules,
+    );
+    expect(shadowed).toMatchObject([{ name: "a", subject: false }]);
+    // Positive control: the same alias, not shadowed, IS the guard.
+    const real = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        'import { requireAdminOrRedirect as guard } from "@/lib/infra/auth-guards";',
+        "export async function a(id: string) {",
+        "  await guard();",
+        "  return w(id);",
+        "}",
+      ),
+      noModules,
+    );
+    expect(real).toMatchObject([{ name: "a", subject: true, scopedBy: null }]);
+  });
+});
+
 describe("export shapes: re-exports of a body that lives in another module", () => {
   const unscopedLib = `export async function a(id: string) ${UNSCOPED_BODY}`;
   const scopedLib = `export async function a(id: string) ${SCOPED_BODY}`;

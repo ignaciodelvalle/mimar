@@ -421,6 +421,9 @@ function declaresIn(scope: ts.Node, name: string): ts.Identifier | null {
   ) {
     for (const s of scope.statements) {
       if (ts.isVariableStatement(s)) declarationListIdentifiers(s.declarationList, found);
+      // A nested `function guard() {}` shadows an imported `guard` alias the
+      // same way a `const` does (calleeName must not read it as the import).
+      else if (ts.isFunctionDeclaration(s) && s.name !== undefined) found.push(s.name);
     }
   } else if (
     (ts.isForOfStatement(scope) || ts.isForInStatement(scope) || ts.isForStatement(scope)) &&
@@ -902,11 +905,14 @@ function collectExports(sf: ts.SourceFile, relPath: string, ctx: Ctx): ModuleExp
   for (const stmt of sf.statements) {
     if (ts.isExportDeclaration(stmt)) collectExportDeclaration(out, sf, relPath, stmt, ctx);
     else if (ts.isExportAssignment(stmt)) {
-      // `export default a` — followed like `export { a as default }`.
-      const b: Binding = ts.isIdentifier(stmt.expression)
-        ? resolveLocal(sf, relPath, stmt.expression.text, ctx)
-        : { kind: "other" };
-      addExport(out, "default", stmt, b);
+      // `export default a`, `export default async () => {}`: read like the
+      // initializer of `export const default = …`.
+      addExport(
+        out,
+        "default",
+        stmt,
+        expressionBinding(sf, relPath, stmt, "default", stmt.expression, ctx),
+      );
     } else if (hasModifier(stmt, ts.SyntaxKind.ExportKeyword)) {
       collectExportedDeclaration(out, sf, relPath, stmt, ctx);
     }
@@ -1012,31 +1018,58 @@ function variableBinding(
   d: ts.VariableDeclaration,
   ctx: Ctx,
 ): Binding {
-  const init = d.initializer === undefined ? undefined : unwrapCasts(d.initializer);
+  if (d.initializer === undefined) return { kind: "other" };
+  return expressionBinding(sf, relPath, stmt, d.name.getText(sf), d.initializer, ctx);
+}
+
+/**
+ * What an exported EXPRESSION is: an inline async function is an action, a
+ * bare name is whatever it names. Shapes whose body this file cannot see FAIL
+ * CLOSED (unresolved) rather than read as "not an action":
+ *   - a property read (`ns.action`, `actions.approve`) — the body sits behind
+ *     an object this file does not evaluate;
+ *   - `a.bind(null, x)` of an action — a new function the client calls;
+ *   - `withAuth(a)` with an action argument — the WRAPPER is what runs.
+ */
+function expressionBinding(
+  sf: ts.SourceFile,
+  relPath: string,
+  decl: ts.Statement,
+  label: string,
+  expr: ts.Expression,
+  ctx: Ctx,
+): Binding {
+  const init = unwrapCasts(expr);
   const body = asyncFunctionBody(init);
-  if (body !== null) return { kind: "action", decl: stmt, body };
-  if (init === undefined) return { kind: "other" };
+  if (body !== null) return { kind: "action", decl, body };
   if (ts.isIdentifier(init)) return resolveLocal(sf, relPath, init.text, ctx);
-  // `export const g = withAuth(f)`: the client calls the WRAPPER, whose body
-  // this file cannot see. If any argument is itself an action, say so instead
-  // of reading the export as "not an action" — fail closed.
-  if (ts.isCallExpression(init)) {
-    for (const arg of init.arguments) {
-      const a = unwrapCasts(arg);
-      const inner = ts.isIdentifier(a)
-        ? resolveLocal(sf, relPath, a.text, ctx)
-        : asyncFunctionBody(a) !== null
-          ? ({ kind: "action" } as const)
-          : null;
-      if (inner?.kind === "action") {
-        return {
-          kind: "unresolved",
-          why: `\`${d.name.getText(sf)}\` wraps an action in ${init.expression.getText(sf)}(), whose body is not followed`,
-        };
-      }
-    }
+  if (ts.isPropertyAccessExpression(init) || ts.isElementAccessExpression(init)) {
+    return {
+      kind: "unresolved",
+      why: `\`${label}\` is read off ${init.getText(sf)}, whose body is not followed`,
+    };
+  }
+  if (ts.isCallExpression(init) && wrapsAction(sf, relPath, init, ctx)) {
+    return {
+      kind: "unresolved",
+      why: `\`${label}\` wraps an action in ${init.expression.getText(sf)}(), whose body is not followed`,
+    };
   }
   return { kind: "other" };
+}
+
+/** `a.bind(…)` of an action, or any call taking an action as an argument. */
+function wrapsAction(sf: ts.SourceFile, relPath: string, call: ts.CallExpression, ctx: Ctx) {
+  const isAction = (e: ts.Expression): boolean => {
+    const x = unwrapCasts(e);
+    if (asyncFunctionBody(x) !== null) return true;
+    return ts.isIdentifier(x) && resolveLocal(sf, relPath, x.text, ctx).kind === "action";
+  };
+  const callee = call.expression;
+  if (ts.isPropertyAccessExpression(callee) && /^(?:bind|call|apply)$/.test(callee.name.text)) {
+    if (isAction(callee.expression)) return true;
+  }
+  return call.arguments.some(isAction);
 }
 
 /** `f as T`, `f!`, `(f)`, `f satisfies T` → `f`. */
