@@ -258,10 +258,10 @@ export const V1_ROUTE_GLOB = "app/api/v1/**/route.ts";
  * 42, so nine routes could have left the glob with this fence still green.
  * `listV1RouteFiles().length` on this worktree is 43 with the route present —
  * equal, not merely satisfied. FORTY-SEVEN, recounted, with `travel/export`.
- * FORTY-EIGHT, recounted, with `me/notifications/{id}/target`
- * (notificaciones-destinos) — a THIRD level under `me/notifications/`.
+ * FORTY-EIGHT with `me/notifications/{id}/target`; FIFTY, recounted (49 + the
+ * header bell's `me/notifications/unread-count`, inicio-app-rediseno) — equal.
  */
-export const MIN_V1_ROUTE_FILES = 48;
+export const MIN_V1_ROUTE_FILES = 50;
 
 export const HELPER_MODULE = "@/lib/infra/api-v1";
 

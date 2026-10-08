@@ -142,6 +142,22 @@ export async function readInbox(args: {
 }
 
 /**
+ * The bell's read (`GET /me/notifications/unread-count`): the unread aggregate
+ * alone, budgeted like the inbox read it is a slice of.
+ *
+ * THE SAME FUNCTION, NOT A SECOND QUERY. `readInbox` calls
+ * `fetchUnreadNotificationCount` with the same user and no category, so the
+ * header badge and the inbox's own figure cannot disagree about one inbox.
+ */
+export async function readUnreadCount(userId: string): Promise<number> {
+  return withDbBudgetOrThrow(
+    fetchUnreadNotificationCount(userId),
+    READ_BUDGET_MS,
+    "api-v1-me-notifications-unread-count",
+  );
+}
+
+/**
  * Run one command, then re-read the unread count so the client can correct its
  * badge without a second round trip.
  *

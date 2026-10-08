@@ -981,6 +981,11 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   // Added by notificaciones-destinos with the per-notification target read: one
   // tap, one row, a handful of access reads — an ordinary authenticated read.
   api_v1_me_notification_target_ip: "authenticated-read",
+  // Added by inicio-app-rediseno with the header bell: the unread aggregate
+  // alone, re-read on every focus of the two screens that carry the bell. An
+  // ordinary authenticated read, with buckets of its own so the bell cannot
+  // spend the inbox's counter.
+  api_v1_me_notifications_unread_ip: "authenticated-read",
 
   // Added by M11 with the owner's casos in the native app. Both are ordinary
   // authenticated reads — the list the web's bandeja shows and one case detail —
