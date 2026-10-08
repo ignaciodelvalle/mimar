@@ -38,6 +38,7 @@
 
 import { type Page, expect } from "@playwright/test";
 
+import { speciesLabel } from "../lib/utils/species";
 import { resolveOrgToken, wizardStep } from "./demo/_helpers";
 
 /** The org seed-test-users.ts provisions — "Refugio Test", legal "Refugio Test (Seed)". */
@@ -105,6 +106,86 @@ export async function intakeShelterPet(
 // ---------------------------------------------------------------------------
 // 2. Rehome sponsorship — a custody the titular can always end
 // ---------------------------------------------------------------------------
+
+/**
+ * Name prefix for pets the titular registers to have one sponsored, swept by
+ * `deletePetsByNamePrefix` (local database only, like every cleanup here).
+ */
+export const SPONSOR_PET_PREFIX = "E2ESponsor-";
+
+/**
+ * The titular registers a NEW pet in Palermo — a zone the seed refugio covers
+ * (scripts/seed-test-users.ts) — and gets back its public token, read from the
+ * registry row that carries exactly `name`.
+ *
+ * WHY NOT `pickSponsorablePetToken`. That walk takes the first rows of the
+ * titular's registry, and the registry lists EVERY active ownership row of the
+ * account, whatever its role (app/(app)/mis-mascotas/page.tsx — "any active
+ * ownership row, no role filter"). On CI's bootstrap DB those are all
+ * owner@'s own pets, so it works. On a long-lived DB they are not: the QA
+ * situations seed (`pnpm seed:situaciones`, scripts/seed-situaciones-plan.ts)
+ * gives owner@ "QA En tránsito" as a FOSTER and "QA Cuidador" as an accepted
+ * CARETAKER, and both carry a non-urgent flag. The rehome page serves the
+ * foster its own "Buscar nuevo hogar para …" screen and 404s the caretaker,
+ * so `waitForRehomePage` never sees "Acompañamiento de adopción para …" and
+ * times out — while the failure screenshot shows the test's OTHER page, the
+ * org admin parked on the org panel where its login landed. A pet this run
+ * registered is owner@'s as titular by construction and named nowhere else.
+ *
+ * The outcome is read from the index, not from the post-action URL
+ * (e2e/README.md "Never wait on a post-action URL"): the registry row that
+ * carries exactly `name` IS the outcome.
+ */
+export async function registerSponsorablePet(page: Page, name: string): Promise<string> {
+  await page.goto("/mis-mascotas/nueva", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: /registrar (tu primera )?mascota/i })).toBeVisible(
+    {
+      timeout: 20_000,
+    },
+  );
+  await page.getByLabel(/^nombre/i).fill(name);
+  await page.getByRole("button", { name: speciesLabel("dog"), exact: true }).click();
+  await page.getByRole("radio", { name: /hembra/i }).check();
+  await page.getByLabel(/provincia/i).selectOption("AR-C");
+  const locality = page.getByLabel(/ciudad, pueblo o barrio/i);
+  await expect(locality).toBeEnabled();
+  await locality.fill("Palermo");
+  await expect(page.getByRole("option", { name: /Palermo/i }).first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await locality.press("Enter");
+  await expect(page.locator('input[name="localityName"]')).toHaveValue(/.+/);
+  await page.getByRole("button", { name: /continuar/i }).click();
+  await expect(page.getByText(/tomar o elegir una foto/i)).toBeVisible();
+
+  // The click is not awaited: its promise sits on the N3 client navigation and
+  // may never settle (create-pet.spec.ts measured it). And the registry is
+  // polled from a SECOND tab of the same session, never by navigating this
+  // one: a goto here could abort the alta's POST in flight, and the action's
+  // POST cannot be told apart from the locality search's by URL (both post to
+  // this page), so waiting on "a server-action response" proves nothing.
+  void page
+    .getByRole("button", { name: /registrar mascota/i })
+    .click()
+    .catch(() => {});
+
+  const registry = await page.context().newPage();
+  try {
+    const row = registry
+      .locator('a[href^="/mis-mascotas/DIM-"]')
+      .filter({ has: registry.getByText(name, { exact: true }) });
+    await expect(async () => {
+      await registry.goto("/mis-mascotas", { waitUntil: "domcontentloaded" });
+      await expect(row).toHaveCount(1, { timeout: 5_000 });
+    }, `${name} is in the titular's registry`).toPass({ timeout: 60_000 });
+    const href = (await row.getAttribute("href")) ?? "";
+    const token = href.split("/mis-mascotas/")[1] ?? "";
+    expect(token, `public token of ${name}, from its registry row`).toMatch(/^DIM-/);
+    return token;
+  } finally {
+    await registry.close();
+  }
+}
 
 /** The seed refugio's row in the titular's org picker, on the rehome page. */
 export function askSeedOrg(page: Page) {
@@ -205,7 +286,8 @@ export async function resetToNone(page: Page, token: string): Promise<void> {
  * `token`: the titular asks, the org accepts. Returns the org token.
  *
  * `titular` is signed in as owner@dim.test and already on the pet's rehome
- * page in the "none" state (`pickSponsorablePetToken` leaves it there);
+ * page in the "none" state (`pickSponsorablePetToken` leaves it there, and so
+ * does `resetToNone` after `registerSponsorablePet`);
  * `org` is signed in as orgadmin@dim.test. The caller ends the custody with
  * `endSponsorship` in a `finally` — it is safe to call even when this function
  * threw halfway, because `resetToNone` also cancels a still-pending request.
