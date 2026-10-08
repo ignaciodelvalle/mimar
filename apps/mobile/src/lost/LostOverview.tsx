@@ -21,7 +21,7 @@
 // screen's header says why), marcar encontrada keeps its two steps, and every
 // command is built and sent exactly as before.
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import type { LostFeedItemV1, PetLostV1 } from "@dim/contract/api";
@@ -129,6 +129,14 @@ export function LostOverview({
   onReload: () => void;
 }) {
   const [confirmingFound, setConfirmingFound] = useState(false);
+  // A landed "Sí, la encontré" re-reads WITHOUT remounting this pane, and the
+  // re-read takes `canMarkFound` away. The confirmation must close with it, or
+  // it would keep hiding the act the new state leads with ("Marcar como
+  // perdida") — the review finding this line exists for.
+  const canMarkFound = view.capabilities.canMarkFound;
+  useEffect(() => {
+    if (!canMarkFound) setConfirmingFound(false);
+  }, [canMarkFound]);
   const lost = view.status === "lost";
 
   return (
@@ -204,7 +212,7 @@ function LostActions({
     <>
       {/* While the found confirmation is open it is the only primary on
           screen; "Cancelar" brings the lead act back. */}
-      {confirmingFound ? null : (
+      {can.canMarkFound && confirmingFound ? null : (
         <>
           {primary === "mark-lost" ? (
             <PrimaryButton
@@ -323,6 +331,12 @@ function FeedModule({
 }) {
   const { items, truncated } = view.feed;
   const [open, setOpen] = useState(items.length > 0);
+  // A refresh that brings the FIRST item in opens the module: the read that
+  // finds a finder's message is the one that must not fold it.
+  const hasItems = items.length > 0;
+  useEffect(() => {
+    if (hasItems) setOpen(true);
+  }, [hasItems]);
 
   if (items.length === 0) {
     return (
@@ -372,7 +386,13 @@ function DisclosureModule({
   busy: boolean;
   onRun: RunFn;
 }) {
-  const [open, setOpen] = useState(view.status !== "lost");
+  const lost = view.status === "lost";
+  const [open, setOpen] = useState(!lost);
+  // The fold follows the state when the state changes under a mounted pane
+  // (marked found, reactivated): folded during a search, open otherwise.
+  useEffect(() => {
+    setOpen(!lost);
+  }, [lost]);
   const rows = disclosureRows(view.disclosure, view.capabilities.editableDisclosureKeys);
   const shown = rows.filter((row) => row.value).length;
 
