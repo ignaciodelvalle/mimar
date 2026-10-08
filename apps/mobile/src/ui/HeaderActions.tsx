@@ -44,6 +44,9 @@ export function HeaderActions() {
   );
 }
 
+/** The badge digit does not grow with the font scale; see the render below. */
+export const BADGE_MAX_FONT_SCALE = 1;
+
 export function NotificationsBell() {
   const router = useRouter();
   const badge = notificationBadgeLabel(useUnreadCount());
@@ -65,7 +68,14 @@ export function NotificationsBell() {
           style={styles.badge}
           testID="notifications-badge"
         >
-          <Text style={styles.badgeLabel}>{badge}</Text>
+          {/* FIXED SIZE, like the glyph it sits on (QA v14 P3). At font scale
+              1.3 the digit grew inside an 18pt dot drawn at a fixed spot and
+              rode up over the bell's outline. The bell icon does not scale
+              either, and the count is in the button's accessible name, which
+              does. */}
+          <Text maxFontSizeMultiplier={BADGE_MAX_FONT_SCALE} style={styles.badgeLabel}>
+            {badge}
+          </Text>
         </View>
       )}
     </Pressable>

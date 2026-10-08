@@ -74,6 +74,13 @@ describe("HeaderActions — the bell", () => {
     expect(screen.getByRole("button", { name: "Notificaciones, 3 sin leer" })).toBeTruthy();
   });
 
+  it("keeps the badge digit at its size under a large font scale (QA v14 P3)", async () => {
+    mockFetchUnread.mockResolvedValue(ok(4));
+    render(<HeaderActions />);
+    await settle();
+    expect(screen.getByText("4", HIDDEN).props.maxFontSizeMultiplier).toBe(1);
+  });
+
   it("caps the badge at 9+", async () => {
     mockFetchUnread.mockResolvedValue(ok(42));
     render(<HeaderActions />);
