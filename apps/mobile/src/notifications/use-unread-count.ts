@@ -38,9 +38,16 @@ export function useUnreadCount(): number | null {
 
   const refresh = useCallback(async () => {
     const mine = ++generation.current;
-    const result = await fetchMyUnreadNotificationCount(sessionPort);
-    if (mine !== generation.current) return;
-    setCount(result.outcome === "ok" ? result.payload.unreadCount : null);
+    try {
+      const result = await fetchMyUnreadNotificationCount(sessionPort);
+      if (mine !== generation.current) return;
+      setCount(result.outcome === "ok" ? result.payload.unreadCount : null);
+    } catch {
+      // A request that THROWS instead of answering is a failed read too: the
+      // old number must not stay on the badge (`use-pending-incoming.ts` swallows
+      // a throw the same way — a badge is never worth a crash in the header).
+      if (mine === generation.current) setCount(null);
+    }
   }, []);
 
   useEffect(() => {

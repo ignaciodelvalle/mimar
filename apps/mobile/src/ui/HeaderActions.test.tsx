@@ -104,6 +104,26 @@ describe("HeaderActions — the bell", () => {
     expect(screen.queryByText("0", HIDDEN)).toBeNull();
   });
 
+  it("clears the old number when a re-read THROWS instead of answering", async () => {
+    // MUTATION, APPLIED: drop the try/catch in `useUnreadCount.refresh`. The 4
+    // stays on the badge (and the rejection goes unhandled).
+    mockFetchUnread.mockResolvedValueOnce(ok(4));
+    const view = render(<HeaderActions />);
+    await settle();
+    expect(screen.getByText("4", HIDDEN)).toBeTruthy();
+
+    mockFetchUnread.mockRejectedValueOnce(new Error("socket hang up"));
+    mockPathname.current = "/notificaciones";
+    view.rerender(<HeaderActions />);
+    mockPathname.current = "/mascotas";
+    view.rerender(<HeaderActions />);
+    await settle();
+
+    expect(mockFetchUnread).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("notifications-badge", HIDDEN)).toBeNull();
+    expect(screen.getByRole("button", { name: "Notificaciones" })).toBeTruthy();
+  });
+
   it("re-reads when its screen comes back into focus, and drops a number it can no longer confirm", async () => {
     mockFetchUnread.mockResolvedValueOnce(ok(5));
     const view = render(<HeaderActions />);
