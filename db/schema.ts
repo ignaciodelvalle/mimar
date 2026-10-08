@@ -3764,17 +3764,17 @@ export const eventPlaces = pgTable(
       .where(sql`${table.localityId} IS NOT NULL`),
     provinceCodeIdx: index("event_places_province_code_idx").on(table.provinceCode),
     petIdIdx: index("event_places_pet_id_idx").on(table.petId),
-    // The CHECKs of migration 0250, by the names Postgres gave them:
-    // db:bootstrap pushes this file before replaying migrations, so 0250's
-    // CREATE TABLE IF NOT EXISTS is skipped on a fresh database and only what
-    // is declared here lands (fenced in __tests__/schema-check-parity).
+    // The CHECKs of migration 0250 (method list widened by 0291), by the names
+    // Postgres gave them: db:bootstrap pushes this file before replaying
+    // migrations, so 0250's CREATE TABLE IF NOT EXISTS is skipped on a fresh
+    // database and only what is declared here lands (fenced in __tests__/schema-check-parity).
     provinceCodeValid: check(
       "event_places_province_code_check",
       sql`${table.provinceCode} IS NULL OR ${table.provinceCode} ~ '^AR-[A-Z]$'`,
     ),
     methodValid: check(
       "event_places_method_check",
-      sql`${table.method} IN ('indec_id', 'catalogue_id', 'exact_name_unique', 'folded_name_unique', 'geocode_unique', 'user_picked', 'spine_rederived', 'legacy_unique_name', 'admin_queue', 'unresolved')`,
+      sql`${table.method} IN ('indec_id', 'catalogue_id', 'exact_name_unique', 'folded_name_unique', 'geocode_unique', 'user_picked', 'spine_rederived', 'legacy_unique_name', 'admin_queue', 'unresolved', 'homonym_by_coordinates')`,
     ),
     enteredIsObject: check(
       "event_places_entered_check",
@@ -3811,14 +3811,14 @@ export const placeResolutions = pgTable(
       table.subjectId,
       table.createdAt.desc(),
     ),
-    // Same reason as event_places: 0250's CHECKs, by their live names.
+    // Same reason as event_places: 0250's CHECKs (method widened by 0291), by their live names.
     subjectTableValid: check(
       "place_resolutions_subject_table_check",
       sql`${table.subjectTable} IN ('event_places', 'pets', 'cases', 'welfare_reports', 'organizations', 'organization_coverage', 'service_offerings', 'govt_business_rules', 'alert_subscriptions', 'alert_firings', 'foster_volunteers', 'approval_requests', 'custody_disputes', 'event_notification_outbox')`,
     ),
     methodValid: check(
       "place_resolutions_method_check",
-      sql`${table.method} IN ('indec_id', 'catalogue_id', 'exact_name_unique', 'folded_name_unique', 'geocode_unique', 'user_picked', 'spine_rederived', 'legacy_unique_name', 'admin_queue', 'unresolved')`,
+      sql`${table.method} IN ('indec_id', 'catalogue_id', 'exact_name_unique', 'folded_name_unique', 'geocode_unique', 'user_picked', 'spine_rederived', 'legacy_unique_name', 'admin_queue', 'unresolved', 'homonym_by_coordinates')`,
     ),
     reasonLength: check(
       "place_resolutions_reason_check",
