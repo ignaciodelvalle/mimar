@@ -54,13 +54,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { Icon } from "../ui/Icon";
+
 import type { AppointmentSearchV1, BookableOfferingV1 } from "@dim/contract/api";
 
 import { apiFailureMessage } from "../api/client";
 import { sessionPort } from "../auth/session-store";
-import { Body, EmptyState, Loading } from "../ui/components";
+import { Body, EmptyState } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { Callout, Eyebrow, ListRow, Screen, SecondaryButton, Title } from "../ui/kit";
+import { ListSkeleton } from "../ui/skeleton";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
 
 import { fetchAppointmentSearch } from "../api/endpoints";
@@ -135,14 +138,20 @@ export function BuscarTurnoScreen({
     void load(serviceKind, chosen);
   }, [load, serviceKind, chosen]);
 
+  // A SKELETON, NOT A SPINNER, like every other list screen in this app: the
+  // rows arrive where their placeholders already were, so nothing jumps. The
+  // label is what a screen reader hears, and it still says which read it is.
   if (state.phase === "loading") {
-    return <Loading label={serviceKind ? "Buscando turnos…" : "Cargando servicios…"} />;
+    return (
+      <Screen>
+        <ListSkeleton rows={3} label={serviceKind ? "Buscando turnos…" : "Cargando servicios…"} />
+      </Screen>
+    );
   }
 
   if (state.phase === "failed") {
     return (
       <Screen>
-        <Title>Buscar turno</Title>
         {/* NOT an empty catalogue. A read that failed and a service with no
             campaigns are different facts, and the first rendered as the second
             sends somebody away from a vaccination drive that is running. */}
@@ -214,23 +223,17 @@ export function BuscarTurnoScreen({
   // `serviceKind` state — an unrecognised code comes back `null`, which is how a
   // stale or hand-made value falls through to the catalogue instead of becoming a
   // heading.
+  //
+  // NO BODY TITLE: the stack header already says "Buscar turno". The rows are
+  // the kit's `ListRow` — it used to be a private serif row ending in a typed
+  // "›", the one destination list in the app that did not look like the others.
   if (view.serviceKind === null) {
     return (
       <Screen>
-        <Title>Buscar turno</Title>
         <Body>Indicá qué servicio buscás.</Body>
         <View style={styles.section}>
           {view.serviceKinds.map((kind) => (
-            <Pressable
-              key={kind.code}
-              accessibilityRole="button"
-              accessibilityLabel={kind.label}
-              onPress={() => setServiceKind(kind.code)}
-              style={styles.row}
-            >
-              <Text style={styles.rowTitle}>{kind.label}</Text>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
+            <ListRow key={kind.code} label={kind.label} onPress={() => setServiceKind(kind.code)} />
           ))}
         </View>
       </Screen>
@@ -339,7 +342,13 @@ function OfferingRow({
         {kind === null ? null : <Text style={styles.rowMeta}>{kind}</Text>}
         <Text style={styles.rowAvailability}>{availability}</Text>
       </View>
-      <Text style={styles.chevron}>›</Text>
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={styles.chevron}
+      >
+        <Icon name="chevron-right" size="sm" color={COLORS.inkFaint} />
+      </View>
     </Pressable>
   );
 }
@@ -379,10 +388,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: COLORS.ink,
   },
-  chevron: {
-    fontFamily: FONTS.sans,
-    fontSize: TYPE.lg,
-    color: COLORS.inkMuted,
-    flexShrink: 0,
-  },
+  // The same glyph `ListRow` ends in, so an offering and a service read as
+  // the same kind of destination.
+  chevron: { flexShrink: 0 },
 });
