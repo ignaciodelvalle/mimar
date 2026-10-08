@@ -5,15 +5,23 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 const mockFetchTarget = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.mock("../api/endpoints", () => ({
   fetchNotificationTarget: (...args: unknown[]) => mockFetchTarget(...args),
+  sendNotificationCommand: (...args: unknown[]) => mockSend(...args),
 }));
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
 import type { NotificationTargetV1 } from "@dim/contract/api";
 import { NotificationTargetScreen } from "./NotificationTargetScreen";
-import { targetStep, webOnlyUrl } from "./notification-target-view-model";
+import {
+  type InboxDetail,
+  inboxDetailFromParams,
+  targetStep,
+  webOnlyUrl,
+} from "./notification-target-view-model";
+import { notificationDetailRoute } from "./notifications-view-model";
 
 const ID = "55555555-5555-4555-8555-555555555555";
 
@@ -60,6 +68,7 @@ function renderScreen(handlers: {
 
 beforeEach(() => {
   mockFetchTarget.mockReset();
+  mockSend.mockReset();
 });
 
 describe("targetStep", () => {
@@ -220,5 +229,165 @@ describe("NotificationTargetScreen — review fixes", () => {
     );
     await waitFor(() => expect(mockFetchTarget).toHaveBeenCalledTimes(1));
     expect(replaced).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pulido-avisos (2026-10) — opened from an inbox row, it is the DETAIL
+// ---------------------------------------------------------------------------
+
+function renderDetail(
+  inbox: InboxDetail,
+  handlers: {
+    onOpenRoute?: (route: string) => void;
+    onReplace?: (route: string) => void;
+    onOpenExternal?: (url: string) => void;
+    onOpenWeb?: (target: NotificationTargetV1) => void;
+    onOpenInbox?: () => void;
+  } = {},
+) {
+  return render(
+    <NotificationTargetScreen
+      notificationId={ID}
+      inbox={inbox}
+      onOpenRoute={handlers.onOpenRoute ?? (() => undefined)}
+      onReplace={handlers.onReplace ?? (() => undefined)}
+      onOpenWeb={handlers.onOpenWeb ?? (() => undefined)}
+      onOpenExternal={handlers.onOpenExternal ?? (() => undefined)}
+      onOpenInbox={handlers.onOpenInbox ?? (() => undefined)}
+    />,
+  );
+}
+
+const PAMPA = { publicToken: "DIM-PAMP-0001", name: "Pampa" };
+
+describe("inboxDetailFromParams", () => {
+  it("reads back exactly what the inbox row handed over", () => {
+    const route = notificationDetailRoute({
+      id: ID,
+      notificationType: "pet_sighting",
+      title: "Avistaje de Pampa",
+      cta: { label: "Ver el avistaje & el mapa", route: null },
+      pet: PAMPA,
+      petLinkAvailable: true,
+    });
+    const query = route.split("?")[1] ?? "";
+    const params = Object.fromEntries(
+      query.split("&").map((pair) => {
+        const [key = "", value = ""] = pair.split("=");
+        return [key, decodeURIComponent(value)];
+      }),
+    );
+    expect(inboxDetailFromParams(params)).toEqual({
+      actionLabel: "Ver el avistaje & el mapa",
+      pet: PAMPA,
+    });
+  });
+
+  it("is null without the inbox origin — a push tap keeps resolving and replacing", () => {
+    expect(inboxDetailFromParams({})).toBeNull();
+    expect(inboxDetailFromParams({ origen: "push", accion: "Ver" })).toBeNull();
+  });
+
+  it("drops a pet link that is missing either half", () => {
+    expect(inboxDetailFromParams({ origen: "bandeja", mascota: "DIM-X" })?.pet).toBeNull();
+    expect(inboxDetailFromParams({ origen: "bandeja", nombre: "Pampa" })?.pet).toBeNull();
+  });
+});
+
+describe("NotificationTargetScreen — the inbox's detail", () => {
+  it("shows the whole notification and never replaces itself", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "ok", payload: aTarget() });
+    const replaced: string[] = [];
+    renderDetail(
+      { actionLabel: "Revisar el traspaso", pet: null },
+      {
+        onReplace: (r) => replaced.push(r),
+      },
+    );
+    expect(await screen.findByText("Refugio Norte propone traspasar a Bruno.")).toBeTruthy();
+    expect(screen.getByText("Propuesta de traspaso")).toBeTruthy();
+    expect(replaced).toEqual([]);
+  });
+
+  it("carries the row's CTA as its ONE primary action, pushed on top of the detail", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "ok", payload: aTarget() });
+    const pushed: string[] = [];
+    renderDetail(
+      { actionLabel: "Revisar el traspaso", pet: PAMPA },
+      { onOpenRoute: (r) => pushed.push(r) },
+    );
+    fireEvent.press(await screen.findByText("Revisar el traspaso"));
+    expect(pushed).toEqual(["/casos/CAS-AAAA-BBBB"]);
+  });
+
+  it("offers the pet link the server allowed, as a row", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "ok", payload: aTarget() });
+    const pushed: string[] = [];
+    renderDetail({ actionLabel: null, pet: PAMPA }, { onOpenRoute: (r) => pushed.push(r) });
+    fireEvent.press(await screen.findByText("Ver Pampa"));
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]).toContain("DIM-PAMP-0001");
+  });
+
+  it("does not open an outside link on its own — the person taps it", async () => {
+    const url = "https://www.argentina.gob.ar/salud/glosario/rabia";
+    mockFetchTarget.mockResolvedValue({
+      outcome: "ok",
+      payload: aTarget({
+        outcome: "external",
+        externalUrl: url,
+        externalLabel: "Información oficial",
+        reasonCopy: "Se abre fuera de miMAR.",
+      }),
+    });
+    const opened: string[] = [];
+    renderDetail(
+      { actionLabel: "Ver detalle", pet: null },
+      { onOpenExternal: (u) => opened.push(u) },
+    );
+    const button = await screen.findByText("Información oficial");
+    expect(opened).toEqual([]);
+    fireEvent.press(button);
+    expect(opened).toEqual([url]);
+  });
+
+  it("keeps Archivar reachable, and archives only after the confirmation", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "ok", payload: aTarget() });
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "archive", changed: true, unreadCount: 0 },
+    });
+    const toInbox = jest.fn();
+    renderDetail({ actionLabel: null, pet: null }, { onOpenInbox: toInbox });
+
+    fireEvent.press(await screen.findByText("Archivar"));
+    // Nothing undoes an archive: the first tap only asks.
+    expect(mockSend).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByText("Archivar notificación"));
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(mockSend.mock.calls[0]?.[1]).toEqual({ command: "archive", notificationId: ID });
+    await waitFor(() => expect(toInbox).toHaveBeenCalled());
+  });
+
+  it("backs out of the archive confirmation without writing", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "ok", payload: aTarget() });
+    renderDetail({ actionLabel: null, pet: null });
+    fireEvent.press(await screen.findByText("Archivar"));
+    fireEvent.press(screen.getByText("Volver"));
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(screen.getByText("Archivar")).toBeTruthy();
+  });
+
+  it("says so when the archive is refused, and stays", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "ok", payload: aTarget() });
+    mockSend.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    const toInbox = jest.fn();
+    renderDetail({ actionLabel: null, pet: null }, { onOpenInbox: toInbox });
+    fireEvent.press(await screen.findByText("Archivar"));
+    fireEvent.press(screen.getByText("Archivar notificación"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(toInbox).not.toHaveBeenCalled();
   });
 });

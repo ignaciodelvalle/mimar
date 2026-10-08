@@ -76,6 +76,44 @@ export function notificationOpenAction(
   return { label: "Ver detalle", route };
 }
 
+/** The `origen` value that turns `aviso/{id}` into the inbox's detail screen. */
+export const INBOX_DETAIL_ORIGIN = "bandeja";
+
+/**
+ * The route a ROW opens (pulido-avisos, 2026-10): the same `aviso/{id}` screen,
+ * told it was opened from the inbox so it shows the notification instead of
+ * jumping past it.
+ *
+ * THE ROW IS NOT THE CTA ANY MORE. A card carried the full body and four
+ * buttons, so one and a half notifications fitted on a phone and, at font scale
+ * 1.3, the first card's buttons fell below the fold. The row now reads; the
+ * detail acts. Without `origen=bandeja` the screen keeps its push-tap behaviour
+ * (resolve and replace itself), which is what a notification opened from the
+ * lock screen wants.
+ *
+ * WHAT THE DETAIL CANNOT ASK THE SERVER FOR rides along as query parameters:
+ * the CTA's label (the target read has no label of its own) and the pet link,
+ * which `petLinkAvailable` decided server-side on the INBOX read. Query
+ * parameters, not a module-level hand-off: they survive the process being
+ * restored onto this screen, and the navigation breadcrumb records the PATH
+ * only (`telemetryPath(pathname)`), so the pet's name never reaches telemetry.
+ */
+export function notificationDetailRoute(
+  notification: Pick<
+    MyNotificationV1,
+    "id" | "notificationType" | "cta" | "title" | "pet" | "petLinkAvailable"
+  >,
+): string {
+  const params: Array<[string, string]> = [["origen", INBOX_DETAIL_ORIGIN]];
+  const open = notificationOpenAction(notification);
+  if (open !== null) params.push(["accion", open.label]);
+  if (notification.petLinkAvailable && notification.pet !== null) {
+    params.push(["mascota", notification.pet.publicToken], ["nombre", notification.pet.name]);
+  }
+  const query = params.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+  return `${notificationExplanationAppRoute(notification.id)}?${query}`;
+}
+
 /**
  * The page, in the order a person reads it, collapsed the way the web collapses
  * it.
@@ -139,26 +177,50 @@ export function severityLabel(severity: string): string {
 }
 
 /**
- * When it arrived, as a date.
- *
- * NOT THE WEB'S `relativeTime` ("hace 3 h"), and the difference is deliberate
- * rather than a shortfall. That helper lives in `lib/utils/format.ts` next to
- * `notificationTypeLabel`, a 50-odd entry map from notification type to Spanish;
- * neither is in the contract, and copying either into this app would be a second
- * list to keep in step — the exact failure `endpoints.ts` has two paragraphs
- * about. A date is a fact this file can compute correctly from the wire with
- * nothing borrowed, and the ROW ORDER already carries the recency that "hace 3 h"
- * is really communicating. If relative time earns its cost, it belongs in the
- * contract beside the ordering rule, where both clients would read one copy.
- *
- * THE TYPE LABEL IS SIMPLY NOT RENDERED HERE for the same reason. The card shows
- * severity and the title; the title is written by the notification's own writer
- * and already says what happened.
+ * When it arrived, as a date. Kept for the screen reader's label, where an
+ * unambiguous date beats a relative one read out of context.
  */
 export function notificationDateLabel(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "fecha desconocida";
   return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+/** Argentina has kept UTC−3 all year since 2009; a calendar day is computed on it. */
+const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+function arDayNumber(ms: number): number {
+  return Math.floor((ms - AR_OFFSET_MS) / DAY_MS);
+}
+
+/**
+ * When it arrived, relative to `now` — the compact row's date (PO, pulido-avisos
+ * 2026-10: "la fecha relativa").
+ *
+ * THE WEB'S SHAPES (`relativeTime` in `lib/utils/format.ts`): "ahora",
+ * "hace 12 min", "hace 3 h", "ayer", "hace 4 días", and the date itself past a
+ * week — a "hace 5 sem" on an inbox is a number nobody acts on. The day steps
+ * are ARGENTINE CALENDAR days, like the web's: 20:00 yesterday read at 10:00
+ * today is "ayer", not "hace 14 h".
+ *
+ * A future instant (a phone whose clock runs behind the server) reads "ahora"
+ * rather than "hace -3 min". `now` is a parameter so the rule is testable
+ * without a fake clock.
+ */
+export function notificationRelativeDateLabel(iso: string, now: Date): string {
+  const at = new Date(iso).getTime();
+  if (Number.isNaN(at)) return "fecha desconocida";
+  const elapsed = now.getTime() - at;
+  if (elapsed < MINUTE_MS) return "ahora";
+  if (elapsed < HOUR_MS) return `hace ${Math.floor(elapsed / MINUTE_MS)} min`;
+  const days = arDayNumber(now.getTime()) - arDayNumber(at);
+  if (days <= 0) return `hace ${Math.floor(elapsed / HOUR_MS)} h`;
+  if (days === 1) return "ayer";
+  if (days < 7) return `hace ${days} días`;
+  return notificationDateLabel(iso);
 }
 
 /**

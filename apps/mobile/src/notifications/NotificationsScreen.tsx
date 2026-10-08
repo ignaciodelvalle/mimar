@@ -9,7 +9,10 @@
 // IT MIRRORS THE WEB'S `/notificaciones` IN WHAT IT LETS SOMEBODY DO, which is
 // how parity is measured on this programme: the tabs, "marcar todas como
 // leídas", the notification's own CTA, "Ver {nombre}", "marcar como leída",
-// "archivar", the group expander, and the empty state's way out.
+// "archivar", the group expander, and the empty state's way out. Since
+// pulido-avisos (2026-10) the per-notification ones live on the DETAIL
+// (`aviso/{id}?origen=bandeja`): the row is one compact target that opens it and
+// marks it read, and the CTA, "Ver {nombre}" and "archivar" are a tap away.
 //
 // D5 — REAL PAGINATION, NOT A SENTENCE POINTING AT THE WEB. The list used to
 // cap at one page and say so under a card ("Todavía no hay paginado en la
@@ -51,18 +54,22 @@ import { fetchMyNotifications, sendNotificationCommand } from "../api/endpoints"
 import { sessionPort } from "../auth/session-store";
 import { Body, EmptyState, Loading, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { Callout, Screen, SecondaryButton, Title } from "../ui/kit";
+import {
+  Callout,
+  RIPPLE,
+  Screen,
+  SecondaryButton,
+  pressedOpacityUnlessAndroidRipple,
+} from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
-import { credentialRoute } from "../ui/routes";
 import { ListSkeleton } from "../ui/skeleton";
-import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
+import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 import { useReconnect } from "../ui/use-reconnect";
 
 import {
   ALL_CATEGORIES_LABEL,
   type NotificationEntry,
   appendNotificationsPage,
-  buildArchive,
   buildMarkAllRead,
   buildMarkRead,
   categoryLabel,
@@ -70,7 +77,8 @@ import {
   emptyTitle,
   inboxSummary,
   notificationDateLabel,
-  notificationOpenAction,
+  notificationDetailRoute,
+  notificationRelativeDateLabel,
   notificationsForDisplay,
   rowsOf,
   severityLabel,
@@ -99,7 +107,7 @@ export function NotificationsScreen({
   onOpenRoute,
   onOpenPets,
 }: {
-  /** Push an in-app path — a CTA's resolved route, or a pet's credential. */
+  /** Push an in-app path — a row's detail, `aviso/{id}?origen=bandeja`. */
   onOpenRoute: (route: string) => void;
   /** The empty state's way out. A dead end is still a dead end. */
   onOpenPets: () => void;
@@ -245,6 +253,43 @@ export function NotificationsScreen({
     [category, load],
   );
 
+  /**
+   * A row tap: open the detail, and mark the row read on the way.
+   *
+   * OPENING IS READING, so the tap does both (pulido-avisos, 2026-10) — the
+   * separate "Marcar como leída" button went with the rest of the row's
+   * buttons. The navigation does not wait for the write: the detail resolves
+   * on its own, and this screen re-reads when it regains focus (NAV-3), which
+   * is when the row's dot and the summary have to agree with the server. The
+   * write re-reads too, so a return that beats the write still converges. The
+   * home bell re-reads on ITS focus (`useUnreadCount`), so the badge drops when
+   * the person gets back there.
+   *
+   * A REFUSED WRITE IS SAID, as every write here is: the row stays unread on
+   * the re-read and the banner says why.
+   */
+  const open = useCallback(
+    (notification: MyNotificationV1) => {
+      if (!notification.read) {
+        const command = buildMarkRead([notification.id]);
+        if (command.ok) {
+          void (async () => {
+            const result = await sendNotificationCommand(sessionPort, command.input);
+            if (result.outcome !== "ok") {
+              setActionError(
+                apiFailureMessage(result) ?? "No pudimos marcar la notificación como leída.",
+              );
+              return;
+            }
+            await load(category, "refresh");
+          })();
+        }
+      }
+      onOpenRoute(notificationDetailRoute(notification));
+    },
+    [category, load, onOpenRoute],
+  );
+
   if (state.phase === "loading")
     return (
       <Screen>
@@ -254,8 +299,8 @@ export function NotificationsScreen({
 
   if (state.phase === "failed") {
     return (
+      // NO <Title>: the stack header already says "Notificaciones" right above.
       <Screen>
-        <Title>Notificaciones</Title>
         <Callout tone="err">
           <Body>{state.message}</Body>
         </Callout>
@@ -270,21 +315,16 @@ export function NotificationsScreen({
   // it (FlatList's `data`) would be exactly the F4 mislabelling this screen's
   // own header already argues against.
   const entries = listReloading ? [] : notificationsForDisplay(view);
+  // One instant for every row's "hace 3 h", taken per render — and every
+  // re-read renders, so the labels move forward each time the inbox is read.
+  const now = new Date();
 
   return (
     <SafeAreaView style={styles.screen} edges={["bottom"]}>
       <FlatList
         data={entries}
         keyExtractor={(entry) => rowsOf(entry)[0]?.id ?? "sin-id"}
-        renderItem={({ item }) => (
-          <NotificationEntryCard
-            entry={item}
-            busy={busy}
-            onOpenRoute={onOpenRoute}
-            onMarkRead={(ids) => void run(buildMarkRead(ids))}
-            onArchive={(id) => void run(buildArchive(id))}
-          />
-        )}
+        renderItem={({ item }) => <NotificationEntryRow entry={item} now={now} onOpen={open} />}
         contentContainerStyle={styles.listContent}
         // Native-feel audit (M10) — this list does not go through `Screen`
         // (a `FlatList` cannot nest inside its `ScrollView`), so the same two
@@ -305,10 +345,10 @@ export function NotificationsScreen({
         onEndReachedThreshold={0.5}
         ListHeaderComponent={
           <View style={styles.headerGap}>
-            <View style={styles.header}>
-              <Title>Notificaciones</Title>
-              <Body>{inboxSummary(view)}</Body>
-            </View>
+            {/* NO <Title> HERE: the stack header right above already reads
+                "Notificaciones", and the second copy cost a line of every
+                screenful (pulido-avisos). The summary is what it added. */}
+            <Body>{inboxSummary(view)}</Body>
 
             {/* The tabs. Only categories that HAVE rows are drawn — an empty tab
                 is furniture, and the web hides it too. The counts are the whole
@@ -408,44 +448,26 @@ function CategoryChip({
  * same animal.
  *
  * THE GROUP IS COLLAPSED BY DEFAULT, like the web's `<details>`. Five "avistaje
- * de Pampa" cards in a row is the state the grouping rule exists to prevent, and
+ * de Pampa" rows in a row is the state the grouping rule exists to prevent, and
  * a phone has less room to spend on it than a browser does.
  */
-function NotificationEntryCard({
+function NotificationEntryRow({
   entry,
-  busy,
-  onOpenRoute,
-  onMarkRead,
-  onArchive,
+  now,
+  onOpen,
 }: {
   entry: NotificationEntry;
-  busy: boolean;
-  onOpenRoute: (route: string) => void;
-  onMarkRead: (ids: string[]) => void;
-  onArchive: (id: string) => void;
+  now: Date;
+  onOpen: (notification: MyNotificationV1) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (entry.kind === "single") {
-    return (
-      <NotificationRow
-        notification={entry.row}
-        busy={busy}
-        onOpenRoute={onOpenRoute}
-        onMarkRead={onMarkRead}
-        onArchive={onArchive}
-      />
-    );
+    return <NotificationRow notification={entry.row} now={now} onOpen={onOpen} />;
   }
 
   return (
     <View style={styles.group}>
-      <NotificationRow
-        notification={entry.leader}
-        busy={busy}
-        onOpenRoute={onOpenRoute}
-        onMarkRead={onMarkRead}
-        onArchive={onArchive}
-      />
+      <NotificationRow notification={entry.leader} now={now} onOpen={onOpen} />
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
@@ -462,10 +484,8 @@ function NotificationEntryCard({
             <NotificationRow
               key={notification.id}
               notification={notification}
-              busy={busy}
-              onOpenRoute={onOpenRoute}
-              onMarkRead={onMarkRead}
-              onArchive={onArchive}
+              now={now}
+              onOpen={onOpen}
             />
           ))}
         </View>
@@ -474,121 +494,94 @@ function NotificationEntryCard({
   );
 }
 
+/**
+ * One notification as a COMPACT ROW (pulido-avisos, 2026-10): the unread dot,
+ * the title, the body clamped to two lines, and when it arrived. Nothing else.
+ *
+ * THE BUTTONS LEFT THE ROW. A card used to carry the full body plus the CTA,
+ * "Ver {nombre}", "Marcar como leída" and "Archivar": one and a half
+ * notifications per screen, and at font scale 1.3 the first card's buttons sat
+ * below the fold. The whole row is now one target, and it opens the detail
+ * (`aviso/{id}?origen=bandeja`), where the CTA, the pet link and "Archivar"
+ * live. Opening it is what reading it means, so the tap also marks it read.
+ *
+ * THE DOT CARRIES THE SEVERITY'S COLOUR, and an unread URGENT row keeps its red
+ * ground: an urgent notification is a lost animal, and a list where it reads
+ * like every other row buries the one row that matters.
+ */
 function NotificationRow({
   notification,
-  busy,
-  onOpenRoute,
-  onMarkRead,
-  onArchive,
+  now,
+  onOpen,
 }: {
   notification: MyNotificationV1;
-  busy: boolean;
-  onOpenRoute: (route: string) => void;
-  onMarkRead: (ids: string[]) => void;
-  onArchive: (id: string) => void;
+  now: Date;
+  onOpen: (notification: MyNotificationV1) => void;
 }) {
   const unread = !notification.read;
-  const tone = severityTone(notification.severity);
-  const openAction = notificationOpenAction(notification);
+  const urgentUnread = unread && notification.severity === "urgent";
+  const spoken = [
+    unread ? "Sin leer" : null,
+    severityLabel(notification.severity),
+    notification.title,
+    notification.body,
+    notificationDateLabel(notification.createdAt),
+  ]
+    .filter((part): part is string => part !== null && part.length > 0)
+    // A body that already ends in a full stop must not be read as "..".
+    .map((part) => part.replace(/[.\s]+$/, ""))
+    .join(". ");
 
   return (
-    <View style={[styles.row, unread ? tone.unread : styles.rowRead]}>
-      <View style={[styles.severityBar, tone.bar]} accessibilityElementsHidden />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={spoken}
+      accessibilityHint={
+        unread ? "Abre la notificación y la marca como leída." : "Abre la notificación."
+      }
+      android_ripple={RIPPLE}
+      onPress={() => onOpen(notification)}
+      style={(state) => [
+        styles.row,
+        urgentUnread ? styles.rowUrgent : null,
+        pressedOpacityUnlessAndroidRipple(state),
+      ]}
+    >
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[styles.dot, unread ? severityDot(notification.severity) : null]}
+      />
       <View style={styles.rowMain}>
         <View style={styles.rowHead}>
           <Text style={[styles.rowTitle, unread ? styles.rowTitleUnread : null]}>
             {notification.title}
           </Text>
-          <Text style={styles.rowDate}>{notificationDateLabel(notification.createdAt)}</Text>
+          <Text style={styles.rowDate}>
+            {notificationRelativeDateLabel(notification.createdAt, now)}
+          </Text>
         </View>
-        <Text style={styles.rowMeta}>{severityLabel(notification.severity)}</Text>
-        {notification.body !== null && <Text style={styles.rowBody}>{notification.body}</Text>}
-
-        <View style={styles.actions}>
-          {/* The notification's own CTA, and it is NEVER inert any more
-              (notificaciones-destinos, 2026-10). It opens the `aviso/{id}`
-              screen, which asks the server where this notification leads NOW
-              and replaces itself with that screen — or explains why the case or
-              the pet is gone, who has to act, and offers the browser when the
-              destination exists only on the web. The old "abrilo desde la web"
-              text was a CTA the app had given up on. */}
-          {openAction !== null && (
-            <RowAction
-              label={openAction.label}
-              emphasis
-              disabled={busy}
-              onPress={() => onOpenRoute(openAction.route)}
-            />
-          )}
-
-          {notification.petLinkAvailable && notification.pet !== null && (
-            <RowAction
-              label={`Ver ${notification.pet.name}`}
-              disabled={busy}
-              // THROUGH `credentialRoute`, never a template literal. A rename of
-              // the pet screen has to be a compile error at every call site, and
-              // this is one of them — see the header of `ui/routes.ts`.
-              onPress={() => onOpenRoute(credentialRoute(notification.pet?.publicToken ?? ""))}
-            />
-          )}
-
-          {unread && (
-            <RowAction
-              label="Marcar como leída"
-              disabled={busy}
-              onPress={() => onMarkRead([notification.id])}
-            />
-          )}
-
-          <RowAction label="Archivar" disabled={busy} onPress={() => onArchive(notification.id)} />
-        </View>
+        {notification.body !== null && (
+          <Text numberOfLines={2} style={styles.rowBody}>
+            {notification.body}
+          </Text>
+        )}
       </View>
-    </View>
-  );
-}
-
-/** A row's own affordance. A full-height touch target, not a text link. */
-function RowAction({
-  label,
-  emphasis = false,
-  disabled,
-  onPress,
-}: {
-  label: string;
-  emphasis?: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={[styles.action, emphasis ? styles.actionEmphasis : null]}
-    >
-      <Text style={emphasis ? styles.actionLabelEmphasis : styles.actionLabel}>{label}</Text>
     </Pressable>
   );
 }
 
-/**
- * The severity bar, in the web card's four tones.
- *
- * "Urgente" is not decorated like the rest and that is not styling: an urgent
- * notification is a lost animal, and a list where it reads like every other row
- * buries the one row that matters.
- */
-function severityTone(severity: string) {
+/** The unread dot, in the web card's four severity tones. */
+function severityDot(severity: string) {
   switch (severity) {
     case "urgent":
-      return { bar: styles.barDanger, unread: styles.rowUnreadDanger };
+      return styles.dotDanger;
     case "warning":
-      return { bar: styles.barWarn, unread: styles.rowUnreadWarn };
+      return styles.dotWarn;
     case "success":
-      return { bar: styles.barOk, unread: styles.rowUnreadOk };
+      return styles.dotOk;
     default:
-      return { bar: styles.barInfo, unread: styles.rowUnreadInfo };
+      return styles.dotInfo;
   }
 }
 
@@ -599,7 +592,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.canvas },
   listContent: { padding: SPACE.xl2, gap: SPACE.lg },
   headerGap: { gap: SPACE.lg },
-  header: { gap: SPACE.xs },
   tabs: { flexDirection: "row", flexWrap: "wrap", gap: SPACE.xs },
   chip: {
     minHeight: TOUCH_TARGET,
@@ -628,25 +620,33 @@ const styles = StyleSheet.create({
   groupRest: { gap: SPACE.xs, paddingLeft: SPACE.md },
 
   row: {
+    minHeight: TOUCH_TARGET,
     flexDirection: "row",
+    alignItems: "flex-start",
     gap: SPACE.sm,
     borderRadius: RADIUS.control,
     borderWidth: 1,
-    padding: SPACE.md,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.sm,
   },
-  rowRead: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
-  rowUnreadDanger: { backgroundColor: COLORS.dangerSurface, borderColor: COLORS.dangerBorder },
-  rowUnreadWarn: { backgroundColor: COLORS.warnSurface, borderColor: COLORS.warnBorder },
-  rowUnreadOk: { backgroundColor: COLORS.okSurface, borderColor: COLORS.okBorder },
-  rowUnreadInfo: { backgroundColor: COLORS.stripe, borderColor: COLORS.celeste },
+  rowUrgent: { backgroundColor: COLORS.dangerSurface, borderColor: COLORS.dangerBorder },
 
-  severityBar: { width: 3, borderRadius: 999, alignSelf: "stretch" },
-  barDanger: { backgroundColor: COLORS.danger },
-  barWarn: { backgroundColor: COLORS.warnInk },
-  barOk: { backgroundColor: COLORS.okInk },
-  barInfo: { backgroundColor: COLORS.celeste },
+  // Drawn on every row, transparent when read, so titles align down the list.
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: (TYPE.md * LEADING.md - 8) / 2,
+    backgroundColor: "transparent",
+  },
+  dotDanger: { backgroundColor: COLORS.danger },
+  dotWarn: { backgroundColor: COLORS.warnInk },
+  dotOk: { backgroundColor: COLORS.okInk },
+  dotInfo: { backgroundColor: COLORS.accent },
 
-  rowMain: { flex: 1, gap: SPACE.xs },
+  rowMain: { flex: 1, gap: 2 },
   rowHead: { flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm },
   rowTitle: {
     flex: 1,
@@ -655,13 +655,12 @@ const styles = StyleSheet.create({
     lineHeight: TYPE.md * LEADING.md,
     color: COLORS.ink,
   },
-  rowTitleUnread: { fontFamily: FONTS.serif },
-  rowDate: { fontFamily: FONTS.mono, fontSize: TYPE.xs, color: COLORS.inkMuted },
-  rowMeta: {
-    fontFamily: FONTS.monoSemibold,
+  rowTitleUnread: { fontFamily: FONTS.sansSemibold },
+  rowDate: {
+    flexShrink: 0,
+    fontFamily: FONTS.mono,
     fontSize: TYPE.xs,
-    letterSpacing: TYPE.xs * TRACKING.wider,
-    textTransform: "uppercase",
+    lineHeight: TYPE.md * LEADING.md,
     color: COLORS.inkMuted,
   },
   rowBody: {
@@ -670,18 +669,4 @@ const styles = StyleSheet.create({
     lineHeight: TYPE.sm * LEADING.md,
     color: COLORS.inkSoft,
   },
-
-  actions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.xs },
-  action: {
-    minHeight: TOUCH_TARGET,
-    justifyContent: "center",
-    paddingHorizontal: SPACE.sm,
-  },
-  actionEmphasis: {
-    borderRadius: RADIUS.chip,
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: SPACE.md,
-  },
-  actionLabel: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkSoft },
-  actionLabelEmphasis: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.surface },
 });

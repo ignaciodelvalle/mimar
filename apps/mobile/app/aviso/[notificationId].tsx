@@ -3,6 +3,9 @@
 // validates the path parameter, refuses to render without a session, and hands
 // off to `NotificationTargetScreen`.
 //
+// Opened from an inbox row (`?origen=bandeja`, `notificationDetailRoute`) it is
+// the notification's detail instead: the whole body, the CTA, "Archivar".
+//
 // "aviso" and not "notificaciones/{id}": the inbox is the FILE
 // `app/notificaciones.tsx`, and a sibling folder of the same name is an
 // arrangement this router's layout does not need to learn for one screen.
@@ -13,7 +16,10 @@ import { Linking } from "react-native";
 import { useGate } from "../../src/auth/useGate";
 import { API_BASE_URL } from "../../src/config/api";
 import { NotificationTargetScreen } from "../../src/notifications/NotificationTargetScreen";
-import { webOnlyUrl } from "../../src/notifications/notification-target-view-model";
+import {
+  inboxDetailFromParams,
+  webOnlyUrl,
+} from "../../src/notifications/notification-target-view-model";
 import { ErrorNotice } from "../../src/ui/components";
 import { Screen } from "../../src/ui/kit";
 import { ROUTES } from "../../src/ui/routes";
@@ -21,7 +27,13 @@ import { ROUTES } from "../../src/ui/routes";
 export default function AvisoRoute() {
   const gate = useGate();
   const router = useRouter();
-  const params = useLocalSearchParams<{ notificationId?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    notificationId?: string | string[];
+    origen?: string | string[];
+    accion?: string | string[];
+    mascota?: string | string[];
+    nombre?: string | string[];
+  }>();
 
   if (!gate.allowed) return gate.element;
 
@@ -38,6 +50,10 @@ export default function AvisoRoute() {
   return (
     <NotificationTargetScreen
       notificationId={notificationId}
+      // A row of the inbox opens this screen with `origen=bandeja` and gets the
+      // notification's detail; a push tap does not, and is routed straight on.
+      inbox={inboxDetailFromParams(params)}
+      onOpenRoute={(route) => router.push(route as Parameters<typeof router.push>[0])}
       // The route came from the server's resolver, built from the same contract
       // this build carries — an in-app path, never a web one.
       onReplace={(route) => router.replace(route as Parameters<typeof router.replace>[0])}
