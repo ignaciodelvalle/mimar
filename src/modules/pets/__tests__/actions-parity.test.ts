@@ -288,6 +288,49 @@ describe("createPetAction", () => {
     });
   });
 
+  // alta-validacion-edad (2026-10-07): the web wizard offers no age field, but
+  // this action read whatever `ageYears` was posted, uncapped. It now runs the
+  // contract's rule — the one `POST /api/v1/pets` runs — before any I/O.
+  describe("stated age", () => {
+    it("refuses '3310' años with the es-AR sentence and registers nothing", async () => {
+      const result = (await createPetAction(
+        { error: null },
+        makeCreateFormData({ species: "dog", ageYears: "3310" }),
+      )) as { error: string };
+      expect(result.error).toBe("Revisá la edad: no puede pasar de 40 años.");
+      const { registerPet } = await import("@/src/modules/pets/application/register-pet");
+      expect(registerPet).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ ageYears: "aprox 2" }, "Poné los años como un número entero, por ejemplo 3."],
+      [{ ageMonths: "-1" }, "Poné los meses como un número entero, por ejemplo 6."],
+      [{ ageYears: "2", ageMonths: "14" }, "Si pusiste años, los meses van de 0 a 11."],
+      // The parser's date derivation throws a RangeError for this one; the
+      // refusal must come FIRST (fresh-context review, finding 2).
+      [{ ageYears: "999999999" }, "Revisá la edad: no puede pasar de 40 años."],
+    ])("refuses %o at its field's own sentence", async (overrides, message) => {
+      const result = (await createPetAction(
+        { error: null },
+        makeCreateFormData({ species: "cat", ...overrides }),
+      )) as { error: string };
+      expect(result.error).toBe(message);
+    });
+
+    it("registers a plausible age, and `other` past 40 (a tortuga terrestre)", async () => {
+      const { registerPet } = await import("@/src/modules/pets/application/register-pet");
+      await createPetAction(
+        { error: null },
+        makeCreateFormData({ species: "dog", ageYears: "12" }),
+      );
+      await createPetAction(
+        { error: null },
+        makeCreateFormData({ species: "other", ageYears: "80" }),
+      );
+      expect(registerPet).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("chip cross-check (found_stray)", () => {
     it("redirects to match page when chip match status=lost", async () => {
       const { lookupByChip } = await import("@/lib/infra/chip-lookup");

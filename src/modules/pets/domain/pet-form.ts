@@ -4,6 +4,7 @@
 
 import { canonicalProvinceNameForStorage } from "@/lib/domain/jurisdiction-canonical";
 import { parseLocationFromFormData } from "@/lib/domain/location-value";
+import { type StatedAgeCode, statedAgeRefusal } from "@dim/contract/input";
 import {
   type PermanentCondition,
   type PetAge,
@@ -11,6 +12,7 @@ import {
   type TrainingLevel,
   detectContactInfoInFreeText,
   estimatedBirthDateFromAge,
+  maxStatedAgeYears,
   sanitizeConditionCodes,
 } from "@dim/contract/reference";
 import type { ParsedPet } from "./types";
@@ -91,6 +93,43 @@ export function parseAgeFromFormData(formData: FormData): PetAge {
     years: parseAgeField(formData, "ageYears"),
     months: parseAgeField(formData, "ageMonths"),
   };
+}
+
+/**
+ * The ALTA's age rule, read off the FormData — `null` when the posted age is
+ * blank or plausible, the es-AR sentence otherwise.
+ *
+ * alta-validacion-edad (2026-10-07). The web alta wizard offers no age field,
+ * but its server action read `ageYears` / `ageMonths` off whatever was posted
+ * through `parseAgeField` — uncapped, so a crafted "3310" derived a birth date
+ * fourteen centuries before the animal's owner. The rule and its codes are the
+ * contract's (`statedAgeRefusal`, the same one `registerPetInputSchema` runs for
+ * the app); the words are this door's.
+ *
+ * ALTA ONLY, deliberately: the edit door re-posts a STORED age, and refusing it
+ * there could lock an owner out of editing an unrelated field.
+ */
+export function statedAgeErrorFromFormData(formData: FormData, species: string): string | null {
+  const code = statedAgeRefusal({
+    species,
+    ageYears: formData.get("ageYears"),
+    ageMonths: formData.get("ageMonths"),
+  });
+  return code === null ? null : statedAgeMessage(code, species);
+}
+
+/** es-AR copy per age code. Exhaustive: a new code is a compile error here. */
+function statedAgeMessage(code: StatedAgeCode, species: string): string {
+  switch (code) {
+    case "AGE_YEARS_INVALID":
+      return "Poné los años como un número entero, por ejemplo 3.";
+    case "AGE_MONTHS_INVALID":
+      return "Poné los meses como un número entero, por ejemplo 6.";
+    case "AGE_MONTHS_OUT_OF_RANGE":
+      return "Si pusiste años, los meses van de 0 a 11.";
+    case "AGE_TOO_HIGH":
+      return `Revisá la edad: no puede pasar de ${maxStatedAgeYears(species)} años.`;
+  }
 }
 
 // ---------------------------------------------------------------------------

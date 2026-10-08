@@ -69,7 +69,7 @@ import { recordMovementWriter } from "./application/movement/record-movement";
 import { correctPetSpecies } from "./application/profile/correct-species";
 import { registerPet } from "./application/register-pet";
 import { updatePet } from "./application/update-pet";
-import { parseAgeFromFormData, parsePetForm } from "./domain/pet-form";
+import { parseAgeFromFormData, parsePetForm, statedAgeErrorFromFormData } from "./domain/pet-form";
 import { resolveEditedBirthDate, withStoredLegacyConditionCodes } from "./domain/pet-profile-edit";
 import type { NewNotification, NewPetFormState } from "./domain/types";
 import { PetsRepository } from "./infrastructure/pets-repository";
@@ -126,6 +126,17 @@ export async function createPetAction(
   // upload and its cleanup below need it, and building a second one would open
   // a second session for the same request.
   const { user, supabase } = live;
+
+  // The contract's age rule — the same one `POST /api/v1/pets` runs through
+  // `registerPetInputSchema` (alta-validacion-edad). BEFORE `parsePetForm`, not
+  // after: the parser derives a birth date from the posted age with `Date`
+  // arithmetic that throws a RangeError for an age like 999999999, so a check
+  // placed after it never gets to say no.
+  const ageError = statedAgeErrorFromFormData(
+    formData,
+    String(formData.get("species") ?? "").trim(),
+  );
+  if (ageError !== null) return { error: ageError };
 
   const parseResult = parsePetForm(formData);
   if (parseResult.error !== null) {

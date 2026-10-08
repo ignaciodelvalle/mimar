@@ -687,6 +687,31 @@ describe("POST /api/v1/pets — server-side gates", () => {
     });
   });
 
+  // alta-validacion-edad (QA on a real phone, 2026-10-07): "3310 años" was
+  // CLAMPED to 250 by the contract and would have been stored. The server now
+  // refuses it — an installed build that still clamps sends exactly 250, which
+  // is refused here too — and writes nothing.
+  it.each([
+    ["the age QA typed", { ageYears: 3310 }],
+    ["what an older build clamps it to", { ageYears: 250 }],
+    ["a dog one year past the cap", { ageYears: "41" }],
+    ["months that run past 11 beside years", { ageYears: 2, ageMonths: 14 }],
+    ["an age that is not a whole number", { ageYears: "aprox 2" }],
+  ])("refuses %s with invalid_request and registers nothing", async (_label, age) => {
+    const res = await POST(post({ ...VALID_BODY, ...age }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_request" });
+    expect(control.registerCalls).toHaveLength(0);
+  });
+
+  it("registers `other` past 40 — a tortuga terrestre — with a well-formed estimated birth date", async () => {
+    const res = await POST(post({ ...VALID_BODY, species: "other", breed: null, ageYears: 80 }));
+    expect(res.status).toBe(201);
+    const dob = (control.registerCalls[0] as { parsed: { dateOfBirth: string } }).parsed
+      .dateOfBirth;
+    expect(dob).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   it.each([
     ["a body that is not JSON at all", "not json"],
     ["a body missing the name", JSON.stringify({ ...VALID_BODY, name: "" })],
