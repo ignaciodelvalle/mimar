@@ -6,7 +6,7 @@
 // page's URL never carries it and nothing stores it.
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 
 import { searchLocalitiesPublicAction } from "@/app/actions/localities";
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
@@ -70,16 +70,23 @@ export function FoundAnimalGuide() {
   const [pick, setPick] = useState<LocalitySearchResult | null>(null);
   const [lookup, setLookup] = useState<Lookup>({ state: "idle" });
   const [, startTransition] = useTransition();
+  // Only the LATEST pick may fill the blocks: a slower answer for an earlier
+  // pick must not land under the later pick's /perdidas link.
+  const latestRequest = useRef(0);
 
   function handleSelect(selected: LocalitySearchResult | null) {
     setPick(selected);
     if (!selected) {
+      latestRequest.current += 1;
       setLookup({ state: "idle" });
       return;
     }
     setLookup({ state: "loading" });
+    latestRequest.current += 1;
+    const request = latestRequest.current;
     startTransition(async () => {
       const result = await findNearbyHelpAction({ localityId: selected.id, includeVets: true });
+      if (request !== latestRequest.current) return;
       setLookup(
         result.ok
           ? { state: "done", help: result.help }
