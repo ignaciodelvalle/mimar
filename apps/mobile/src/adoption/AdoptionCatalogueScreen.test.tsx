@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { RefreshControl } from "react-native";
 
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
@@ -146,5 +147,26 @@ describe("the catalogue's chrome and photos", () => {
     expect(
       screen.getByTestId("adoption-thumb-fallback", { includeHiddenElements: true }),
     ).toBeTruthy();
+  });
+
+  it("tries a NEW photo url even after the previous one failed", async () => {
+    mockFetch.mockResolvedValueOnce(page([anItem({ photoUrl: "https://cdn.test/old.jpg" })], null));
+    const { rerender } = render(
+      <AdoptionCatalogueScreen onOpenPet={noop} onOpenMyApplications={noop} />,
+    );
+    await screen.findByText("Lola");
+    fireEvent(screen.getByTestId("adoption-thumb", { includeHiddenElements: true }), "error");
+    expect(
+      screen.getByTestId("adoption-thumb-fallback", { includeHiddenElements: true }),
+    ).toBeTruthy();
+
+    mockFetch.mockResolvedValueOnce(page([anItem({ photoUrl: "https://cdn.test/new.jpg" })], null));
+    fireEvent(screen.UNSAFE_getByType(RefreshControl), "refresh");
+    rerender(<AdoptionCatalogueScreen onOpenPet={noop} onOpenMyApplications={noop} />);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("adoption-thumb", { includeHiddenElements: true }).props.source,
+      ).toEqual({ uri: "https://cdn.test/new.jpg" }),
+    );
   });
 });

@@ -252,3 +252,23 @@ describe("AdoptionDetailScreen — the photos", () => {
     ).toBeTruthy();
   });
 });
+
+describe("AdoptionDetailScreen — the pager runs on the hero's measured width", () => {
+  it("sizes pages and offsets from the frame it snaps in, not from a guessed gutter", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: withPhotos(["https://cdn.test/a.jpg", "https://cdn.test/b.jpg"]),
+    });
+    renderScreen();
+    await screen.findByText("Lola");
+    fireEvent(screen.getByTestId("adoption-hero"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 225 } },
+    });
+    const carousel = screen.getByTestId("adoption-carousel");
+    expect(carousel.props.getItemLayout(null, 1)).toEqual({ length: 300, offset: 300, index: 1 });
+    fireEvent(carousel, "momentumScrollEnd", {
+      nativeEvent: { contentOffset: { x: 300, y: 0 } },
+    });
+    expect(screen.getByText("2 de 2")).toBeTruthy();
+  });
+});

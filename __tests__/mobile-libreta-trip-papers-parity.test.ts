@@ -141,6 +141,19 @@ describe("trip papers ticks collapse identically on the web and in the app", () 
     expect(appTitles(ROWS)).toEqual(web);
   });
 
+  it("never merges in the app what the web keeps apart when the trips fell out of the read", () => {
+    // A capped read can keep the ticks and lose the trip rows. The web still
+    // tells the trips apart by id; the app, with no destination to key on,
+    // must not merge them on the day alone.
+    const orphans = [
+      tick("x2", "trip-a", "2026-07-02T18:00:00Z"),
+      tick("y1", "trip-b", "2026-07-02T17:00:00Z"),
+      tick("x1", "trip-a", "2026-07-02T16:00:00Z"),
+    ];
+    expect(webTitles(orphans)).toEqual(Array(3).fill(TRIP_PAPERS_UPDATED_LABEL));
+    expect(appTitles(orphans)).toEqual(webTitles(orphans));
+  });
+
   it("the two platforms title a tick with the same words", () => {
     expect(APP_TRIP_PAPERS_UPDATED_LABEL).toBe(TRIP_PAPERS_UPDATED_LABEL);
   });

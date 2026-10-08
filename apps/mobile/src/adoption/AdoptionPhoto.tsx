@@ -23,6 +23,7 @@ import { useMemo, useState } from "react";
 import {
   FlatList,
   Image,
+  type LayoutChangeEvent,
   type ListRenderItemInfo,
   StyleSheet,
   Text,
@@ -40,8 +41,13 @@ export const ADOPTION_THUMB_SIZE = 72;
 /** The hero's width:height. 4:3 is what a phone camera shoots by default. */
 const HERO_ASPECT = 4 / 3;
 
-/** The Screen's horizontal padding, which the hero spans edge to edge inside. */
-const SCREEN_GUTTER = SPACE.lg;
+/**
+ * A first guess at the hero's width — the kit's `Screen` pads its content by
+ * `SPACE.xl2` on each side — used only until the hero measures itself. The
+ * pager's pages, offsets and counter all run on the MEASURED width: a page
+ * wider than the frame it snaps in drifts by the difference on every swipe.
+ */
+const SCREEN_GUTTER_ESTIMATE = SPACE.xl2;
 
 function PawPlaceholder({ size, testID }: { size: number; testID: string }) {
   return (
@@ -69,10 +75,12 @@ function Photo({
   label: string | null;
   testID: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  // The url that failed, not a flag: a refresh that brings a NEW url to the
+  // same card must try it rather than keep the paw of the old one's failure.
+  const [failedUri, setFailedUri] = useState<string | null>(null);
   const source = useMemo(() => (uri === null ? null : { uri }), [uri]);
 
-  if (source === null || failed) {
+  if (source === null || failedUri === uri) {
     return <PawPlaceholder size={pawSize} testID={`${testID}-fallback`} />;
   }
   return (
@@ -85,7 +93,7 @@ function Photo({
       {...(label === null
         ? { accessibilityElementsHidden: true, importantForAccessibility: "no" as const }
         : { accessible: true, accessibilityLabel: label })}
-      onError={() => setFailed(true)}
+      onError={() => setFailedUri(uri)}
     />
   );
 }
@@ -113,13 +121,18 @@ export function AdoptionThumb({ uri }: { uri: string | null }) {
  */
 export function AdoptionHero({ uris, petName }: { uris: readonly string[]; petName: string }) {
   const { width: windowWidth } = useWindowDimensions();
-  const width = Math.max(0, windowWidth - SCREEN_GUTTER * 2);
+  const [measured, setMeasured] = useState<number | null>(null);
+  const width = measured ?? Math.max(0, windowWidth - SCREEN_GUTTER_ESTIMATE * 2);
   const height = Math.round(width / HERO_ASPECT);
   const [page, setPage] = useState(0);
+  const onLayout = (event: LayoutChangeEvent) => {
+    const next = Math.round(event.nativeEvent.layout.width);
+    if (next > 0 && next !== measured) setMeasured(next);
+  };
 
   if (uris.length === 0) {
     return (
-      <View testID="adoption-hero" style={[styles.hero, { height }]}>
+      <View testID="adoption-hero" onLayout={onLayout} style={[styles.hero, { height }]}>
         <PawPlaceholder size={48} testID="adoption-hero-fallback" />
       </View>
     );
@@ -127,7 +140,7 @@ export function AdoptionHero({ uris, petName }: { uris: readonly string[]; petNa
 
   if (uris.length === 1) {
     return (
-      <View testID="adoption-hero" style={[styles.hero, { height }]}>
+      <View testID="adoption-hero" onLayout={onLayout} style={[styles.hero, { height }]}>
         <Photo
           uri={uris[0] ?? null}
           pawSize={48}
@@ -151,7 +164,7 @@ export function AdoptionHero({ uris, petName }: { uris: readonly string[]; petNa
 
   return (
     <View style={styles.carousel}>
-      <View testID="adoption-hero" style={[styles.hero, { height }]}>
+      <View testID="adoption-hero" onLayout={onLayout} style={[styles.hero, { height }]}>
         <FlatList
           testID="adoption-carousel"
           data={uris as string[]}
