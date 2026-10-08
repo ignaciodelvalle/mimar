@@ -7,12 +7,14 @@
 // unencrypted. Nothing failed, which is exactly why nobody saw it.
 //
 // The rule, in one place, applied by every `postgres(` call site (pinned by
-// db/__tests__/postgres-tls-callsites.test.ts so a new client cannot forget it):
+// db/__tests__/postgres-tls.test.ts so a new client cannot forget it):
 //
 //   1. An explicit `sslmode` / `ssl` / `sslrootcert=system` in the URL wins, with
 //      exactly the meaning postgres.js gives it. Passing the `ssl` OPTION would
 //      otherwise silently override the URL (postgres.js reads `k in options`
 //      before the query string), so the helper reproduces that parse itself.
+//      One exception: `prefer` / `allow` on a non-local host become "require",
+//      since `prefer` silently falls back to plaintext (a forceable downgrade).
 //   2. EXCEPT: an explicit plaintext request (`sslmode=disable`, `ssl=false`) on a
 //      NON-local host THROWS in production (`NODE_ENV=production` or any
 //      `VERCEL_ENV`). A production deploy must never be one URL edit away from
@@ -90,6 +92,12 @@ export function postgresTlsOption(url: string | undefined, env: Env = process.en
         ].join(" "),
       );
     }
+    // `prefer` (and `allow`) let postgres.js fall back to plaintext when the
+    // server, or anyone in the middle, answers the SSLRequest with "no"
+    // (connection.js: `!canSSL && ssl === 'prefer'`). Off loopback that is a
+    // downgrade an active attacker can force, so upgrade it: "require" reaches
+    // every server those modes would have reached over TLS.
+    if (!local && (explicit === "prefer" || explicit === "allow")) return "require";
     return explicit;
   }
 
