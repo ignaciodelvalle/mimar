@@ -56,12 +56,24 @@ import {
   hasReachableContact,
 } from "@/lib/utils/contact-parts";
 import { AR_TIME_ZONE, parseArDatetimeLocal } from "@/lib/utils/format";
+import { findNearbyHelp } from "@/src/modules/organizations/application/find-nearby-help";
+import type { NearbyHelp } from "@/src/modules/organizations/domain/nearby-help";
 
 export type FinderInPossessionState = {
   ok: boolean;
   error: string | null;
   /** Non-fatal warning shown when photo upload failed but event was saved. */
   warning?: string | null;
+  /**
+   * The plan-B list (P4): organizations near the point the finder placed that
+   * receive found animals, and — when the condition was "necesita_vet_urgente"
+   * — the nearest vets first. Built from the COARSENED point; carries names,
+   * localities and coarse distances, never a coordinate. Null when the lookup
+   * failed: the report itself already succeeded and must not read as failed.
+   */
+  nearbyHelp?: NearbyHelp | null;
+  /** Whether the finder marked the animal as needing a vet urgently. */
+  urgent?: boolean;
 };
 
 // @no-auth-required: anonymous finder submits via /p/[token]/encontre.
@@ -619,5 +631,19 @@ export async function reportFinderInPossessionAction(
   // so a retry that dedupes no longer re-pushes "alguien tiene a tu mascota" to
   // an owner who already got it.
 
-  return { ok: true, error: null, warning: photoWarning };
+  // Plan B (P4, PO 2026-10-07): only AFTER the owner was notified, and never
+  // instead of it. Coarsened inside findNearbyHelp before any read; reported
+  // without the point when it fails, and its failure never fails the report.
+  let nearbyHelp: NearbyHelp | null = null;
+  try {
+    nearbyHelp = await findNearbyHelp({
+      kind: "point",
+      point: { lat, lng },
+      includeVets: isUrgent,
+    });
+  } catch (err) {
+    reportError("public-encontre/nearby-help", err);
+  }
+
+  return { ok: true, error: null, warning: photoWarning, nearbyHelp, urgent: isUrgent };
 }
