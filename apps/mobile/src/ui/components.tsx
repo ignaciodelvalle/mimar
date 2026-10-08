@@ -44,7 +44,12 @@ export function Card({ children, title }: { children: ReactNode; title?: string 
   return (
     <View style={styles.card}>
       {title === undefined ? null : (
-        <Text style={keepsBrand ? [styles.cardTitle, styles.cardTitleAsWritten] : styles.cardTitle}>
+        <Text
+          style={keepsBrand ? [styles.cardTitle, styles.cardTitleAsWritten] : styles.cardTitle}
+          // The capitals are drawn, not said: a screen reader reads the title
+          // as written, as it does for every other (transform-only) title.
+          accessibilityLabel={keepsBrand ? title : undefined}
+        >
           {keepsBrand ? upperExceptBrand(title) : title}
         </Text>
       )}

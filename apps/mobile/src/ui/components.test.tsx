@@ -278,6 +278,8 @@ describe("a card title keeps the brand's casing (QA v14 P3)", () => {
     render(<Card title="Acerca de miMAR">{null}</Card>);
     const title = screen.getByText("ACERCA DE miMAR");
     expect(StyleSheet.flatten(title.props.style).textTransform).toBe("none");
+    // Said as written, like every other card title.
+    expect(screen.getByLabelText("Acerca de miMAR")).toBe(title);
   });
 
   it("a title without the brand keeps its text and the capitals style", () => {

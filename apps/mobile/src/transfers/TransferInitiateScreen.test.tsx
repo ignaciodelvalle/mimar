@@ -275,7 +275,7 @@ describe("a recipient who has no account", () => {
     fireEvent.press(screen.getByText("Enviar la propuesta"));
 
     await waitFor(() =>
-      expect(screen.getByText("Esa persona todavía no tiene cuenta en miMAR")).toBeTruthy(),
+      expect(screen.getByLabelText("Esa persona todavía no tiene cuenta en miMAR")).toBeTruthy(),
     );
     expect(screen.getByText(/Avisale vos/)).toBeTruthy();
     // It did NOT walk off to the proposal on its own.
@@ -297,7 +297,7 @@ describe("a recipient who has no account", () => {
     fireEvent.press(screen.getByText("Enviar la propuesta"));
 
     await waitFor(() => expect(onSent).toHaveBeenCalledWith("PTR-NEW0-0003"));
-    expect(screen.queryByText("Esa persona todavía no tiene cuenta en miMAR")).toBeNull();
+    expect(screen.queryByLabelText("Esa persona todavía no tiene cuenta en miMAR")).toBeNull();
   });
 });
 
