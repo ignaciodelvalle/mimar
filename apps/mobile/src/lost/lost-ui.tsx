@@ -21,8 +21,11 @@ import {
   disclosureLabel,
 } from "./lost-view-model";
 
-/** How every pane sends a command: the screen's `run`. */
-export type RunFn = (input: LostCommandInput, idempotencyKey: string | null) => Promise<void>;
+/**
+ * How every pane sends a command: the screen's `run`. Resolves `true` when the
+ * command landed and `false` when it was refused (the screen already said why).
+ */
+export type RunFn = (input: LostCommandInput, idempotencyKey: string | null) => Promise<boolean>;
 
 /**
  * One disclosure preference — the privacy surface of the whole feature.
