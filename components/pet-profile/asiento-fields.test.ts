@@ -9,8 +9,11 @@
 // makes that fix sound: given a FIXED `now`, the label is a pure, stable
 // function of (date, now) with no hidden dependency on the ambient clock.
 
+import { computeVaccinationSummary } from "@/lib/domain/libreta-health-status";
+import { deriveComplianceState } from "@/lib/projections/pet-compliance";
 import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/types";
 import { describe, expect, it } from "vitest";
+import { deriveVacunasBadgeCounts, metaFor } from "./VacunasStatusBadges";
 import {
   type AsientoViewer,
   TRIP_PAPERS_DESTINATION_KEY,
@@ -602,5 +605,83 @@ describe("trip papers ticks — one row per trip and day (presentation only)", (
       "Papeles del viaje actualizados · 3 cambios · Chile",
     );
     expect(tripPapersGroupLabel(2, null)).toBe("Papeles del viaje actualizados · 2 cambios");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// QA v14 P2a (2026-10-07): ONE owner-declared rabies dose, no expiry written.
+// The front said "Declarada · refuerzo sugerido", the back "1 Vigente · 0 Sin
+// confirmar", the asiento "Vence: Sin dato". Three derivations of one dose. The
+// provenance now comes from provenanceTier (the front's function) and the date
+// from doseNextDue (shared by back and asiento), so all three say the same.
+// ---------------------------------------------------------------------------
+
+describe("one owner-declared rabies dose without an expiry — front, back and asiento agree", () => {
+  const DOSE_NOW = new Date("2026-10-07T15:00:00Z");
+  const declaredRabies: HistorialEventRow = {
+    id: "evt-declared-rabies",
+    petId: "pet-1",
+    eventType: "vaccination_administered",
+    payload: { vaccine_name: "Antirrabica" },
+    occurredAt: new Date("2026-09-01T15:00:00Z"),
+    notes: null,
+    recordedByUserId: GRACIELA,
+    authorRole: "owner",
+    authorVerified: false,
+    authorOrganizationId: null,
+    attachmentUrl: null,
+    hasAttachment: false,
+    amendedAt: null,
+  };
+
+  it("the front calls it Declarada with a suggested booster", () => {
+    const card = deriveComplianceState({
+      now: DOSE_NOW,
+      events: [declaredRabies],
+      rabiesReminder: null,
+      reservedRabiesTurno: null,
+      microchipCode: null,
+      pppApplies: false,
+      viewerUserId: GRACIELA,
+    }).cards.find((c) => c.key === "rabies");
+    expect(card?.state).toBe("Declarada");
+  });
+
+  it("the back counts it as still to confirm, never as Vigente", () => {
+    const summary = computeVaccinationSummary([declaredRabies], "dog", DOSE_NOW);
+    const rabies = summary.perVaccine.find((v) => v.vaccineName === "Antirrábica");
+    expect(rabies?.provenance).toBe("declarada");
+    expect(rabies?.dueSource).toBe("derived");
+    expect(summary.declared).toBe(1);
+    const counts = deriveVacunasBadgeCounts(summary);
+    expect(counts.vigente).toBe(0);
+    expect(counts.sinConfirmar).toBe(1);
+    expect(rabies && metaFor(rabies)).toMatch(/^Declarada · refuerzo sugerido /);
+  });
+
+  it("the asiento shows the same suggested date the back computed, not 'Sin dato'", () => {
+    const summary = computeVaccinationSummary([declaredRabies], "dog", DOSE_NOW);
+    const backDue = summary.perVaccine.find((v) => v.vaccineName === "Antirrábica")?.nextDueAt;
+    const view = toAsientoView(declaredRabies, "TOKEN-1234", SELF, DOSE_NOW);
+    const due = view.facts.find((f) => f.key === "Refuerzo sugerido");
+    expect(view.facts.find((f) => f.key === "Vence")).toBeUndefined();
+    expect(due?.missing).toBeUndefined();
+    expect(backDue).toBeTruthy();
+    expect(due?.value).toContain("2027");
+    expect(view.warn).toBe("Falta verificación profesional");
+  });
+
+  it("a vet-signed date still reads 'Vence', and a signed dose stays Vigente", () => {
+    const signed: HistorialEventRow = {
+      ...declaredRabies,
+      authorRole: "vet",
+      authorVerified: true,
+      payload: { vaccine_name: "Antirrábica", next_due_at: "2027-09-01" },
+    };
+    const view = toAsientoView(signed, "TOKEN-1234", SELF, DOSE_NOW);
+    expect(view.facts.find((f) => f.key === "Vence")?.missing).toBeUndefined();
+    const summary = computeVaccinationSummary([signed], "dog", DOSE_NOW);
+    expect(summary.declared).toBe(0);
+    expect(deriveVacunasBadgeCounts(summary).vigente).toBe(1);
   });
 });

@@ -117,12 +117,14 @@ export function buildPetLibretaV1(input: BuildPetLibretaInput): PetLibretaV1 {
     expired: data.summary.expired,
     missing: data.summary.missing,
     unconfirmed: data.summary.unconfirmed,
+    declared: data.summary.declared,
     otherCount: data.summary.otherCount,
     perVaccine: data.summary.perVaccine.map((v) => ({
       vaccineName: v.vaccineName,
       status: v.status,
       lastDoseAt: toIsoOrNull(v.lastDoseAt),
       nextDueAt: toIsoOrNull(v.nextDueAt),
+      provenance: v.provenance ?? null,
     })),
     calendarNote: data.summary.calendarNote,
   };

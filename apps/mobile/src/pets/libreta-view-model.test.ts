@@ -23,6 +23,8 @@ import {
   upcomingRemainingLabel,
   upcomingRowLabel,
   vaccinationHeadline,
+  vaccineCounts,
+  vaccineRowLabel,
   vaccineStatusLabel,
 } from "./libreta-view-model";
 import { SECTION_UNAVAILABLE_MESSAGE } from "./owner-face-view-model";
@@ -80,6 +82,39 @@ describe("otherVaccinesNote — a dose the catalog could not name must not vanis
   it("agrees in number", () => {
     expect(otherVaccinesNote(summary({ otherCount: 1 }))).toContain("1 vacuna registrada");
     expect(otherVaccinesNote(summary({ otherCount: 3 }))).toContain("3 vacunas registradas");
+  });
+});
+
+describe("an owner-declared current dose — the back says what the front says (QA v14 P2a)", () => {
+  const declaredRabies = {
+    vaccineName: "Antirrábica",
+    status: "active" as const,
+    lastDoseAt: "2026-09-01T15:00:00.000Z",
+    nextDueAt: "2027-09-01T12:00:00.000Z",
+    provenance: "declarada" as const,
+  };
+
+  it("counts it with Sin confirmar, never with Vigente", () => {
+    const s = summary({ active: 1, declared: 1, perVaccine: [declaredRabies] });
+    expect(vaccineCounts(s)).toEqual({ vigente: 0, porVencer: 0, vencida: 0, sinConfirmar: 1 });
+    expect(vaccinationHeadline(s)).toBe("SIN CONFIRMAR");
+  });
+
+  it("labels the row Declarada, like the credential front", () => {
+    expect(vaccineRowLabel(declaredRabies)).toBe("Declarada");
+    expect(vaccineRowLabel({ ...declaredRabies, provenance: "profesional" })).toBe("Vigente");
+  });
+
+  it("an older server without the fields keeps the old reading", () => {
+    const s = summary({ active: 1, perVaccine: [{ ...declaredRabies, provenance: undefined }] });
+    expect(vaccineCounts(s).vigente).toBe(1);
+    expect(vaccinationHeadline(s)).toBe("AL DÍA");
+  });
+
+  it("a declared dose that is due soon keeps its urgency", () => {
+    const s = summary({ dueSoon: 1, perVaccine: [{ ...declaredRabies, status: "due_soon" }] });
+    expect(vaccineRowLabel({ ...declaredRabies, status: "due_soon" })).toBe("Por vencer");
+    expect(vaccinationHeadline(s)).toBe("POR VENCER");
   });
 });
 

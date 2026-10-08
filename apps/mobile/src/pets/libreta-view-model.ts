@@ -131,8 +131,37 @@ export function vaccinationHeadline(summary: LibretaVaccinationSection): string 
   if (summary.expired > 0) return "VENCIDA";
   if (summary.missing > 0) return "SIN APLICAR";
   if (summary.dueSoon > 0) return "POR VENCER";
-  if (summary.unconfirmed > 0) return "SIN CONFIRMAR";
+  // A current dose nobody professional signed is not "al día" either — the
+  // credential front calls the same dose "Declarada" (QA v14 P2a).
+  if (summary.unconfirmed > 0 || (summary.declared ?? 0) > 0) return "SIN CONFIRMAR";
   return "AL DÍA";
+}
+
+/**
+ * The four counts above the ledger. A declared current dose counts with "Sin
+ * confirmar", not with "Vigente": the front says "Declarada" and the asiento
+ * says "Falta verificación profesional" for the same dose, and a back reading
+ * "1 Vigente · 0 Sin confirmar" contradicted both (QA v14 P2a, 2026-10-07).
+ */
+export function vaccineCounts(summary: LibretaVaccinationSection): {
+  vigente: number;
+  porVencer: number;
+  vencida: number;
+  sinConfirmar: number;
+} {
+  const declared = summary.declared ?? 0;
+  return {
+    vigente: Math.max(0, summary.active - declared),
+    porVencer: summary.dueSoon,
+    vencida: summary.expired,
+    sinConfirmar: summary.unconfirmed + declared,
+  };
+}
+
+/** One vaccine row's state: "Declarada" for a current dose nobody signed. */
+export function vaccineRowLabel(vaccine: LibretaVaccinationSection["perVaccine"][number]): string {
+  if (vaccine.status === "active" && vaccine.provenance === "declarada") return "Declarada";
+  return vaccineStatusLabel(vaccine.status);
 }
 
 /** One vaccine's state, in the web's own words. */

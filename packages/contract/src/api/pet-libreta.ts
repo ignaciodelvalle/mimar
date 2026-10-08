@@ -110,6 +110,13 @@ export type LibretaVaccineV1 = {
   status: "active" | "due_soon" | "expired" | "missing" | "unconfirmed";
   lastDoseAt: string | null;
   nextDueAt: string | null;
+  /**
+   * Who stands behind the latest dose — the credential front's own provenance
+   * rule. A current dose nobody professional signed is "declarada": the front
+   * calls it "Declarada", so the back must not call it "Vigente" (QA v14 P2a).
+   * Optional on the wire: an older server omits it (treat as no claim).
+   */
+  provenance?: "profesional" | "declarada" | null;
 };
 
 export type LibretaVaccinationSection = {
@@ -118,6 +125,12 @@ export type LibretaVaccinationSection = {
   expired: number;
   missing: number;
   unconfirmed: number;
+  /**
+   * The subset of `active` that is owner-declared (`provenance: "declarada"`).
+   * Clients count it with "Sin confirmar", not with "Vigente". Optional on the
+   * wire: an older server omits it (treat as 0).
+   */
+  declared?: number;
   /**
    * DISTINCT vaccines on file whose name is not in the species catalog. They
    * do not move the core-vaccine verdict, and they must stay visible anyway —

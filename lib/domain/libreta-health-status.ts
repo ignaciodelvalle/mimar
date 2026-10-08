@@ -12,6 +12,7 @@
 //                            followed by a medication_stopped for the
 //                            same drug name
 
+import { provenanceTier } from "@/lib/domain/provenance";
 import {
   RABIES_VACCINE_NAME,
   type VaccineDef,
@@ -65,7 +66,17 @@ export type VaccineSnapshot = {
    * two surfaces disagreeing on how confident to sound about the same guess.
    */
   dueSource?: "payload" | "derived";
+  /**
+   * Who stands behind the latest dose, by `provenanceTier` — THE function the
+   * credential front's rabies card uses — so the back can never call
+   * "Vigente" a dose the front calls "Declarada" (QA v14 P2a, 2026-10-07).
+   * Undefined when the caller passed no author fields (then nothing is claimed).
+   */
+  provenance?: DoseProvenance;
 };
+
+/** "profesional" = signed by a matrícula / verified; "declarada" = nobody signed it. */
+export type DoseProvenance = "profesional" | "declarada";
 
 export type VaccinationSummary = {
   active: number;
@@ -80,6 +91,15 @@ export type VaccinationSummary = {
    * let the libreta report a matrícula-signed dose as absent.
    */
   unconfirmed: number;
+  /**
+   * Doses that are current by date (`active`) but that nobody professional
+   * signed (`provenance: "declarada"`). A SUBSET of `active`, reported apart so
+   * a surface can say what the front says — "Declarada", not "Vigente" — and
+   * count it as still to be confirmed. A declared dose that is due soon or
+   * expired keeps its urgency bucket: provenance never hides an expiry (the
+   * same rule the front's dual card follows).
+   */
+  declared: number;
   /**
    * Count of DISTINCT vaccines administered whose name is NOT in the species
    * catalog (free-text names entered in the attendance/registro forms). These
@@ -129,6 +149,11 @@ type AnyEvent = {
   eventType: string;
   occurredAt: Date | string;
   payload: unknown;
+  // Author fields, as on a pet_events row. Optional: a caller that omits them
+  // gets no provenance claim at all.
+  authorRole?: string | null;
+  authorVerified?: boolean | null;
+  authorOrganizationId?: string | null;
 };
 
 function asDate(value: Date | string | null | undefined): Date | null {
@@ -165,6 +190,64 @@ function parseExplicitNextDue(value: unknown): Date | null {
     return parseDateInput(value);
   }
   return asDate((value ?? null) as Date | string | null);
+}
+
+/**
+ * The catalog entry a recorded dose name counts as: the exact catalog match,
+ * or — for a rabies-family name the catalog does not resolve ("Rabia",
+ * "DHPP + antirrábica") — the catalog's rabies entry (PO decision 2026-10-07:
+ * one rabies rule on both faces). Null for any other free-text name.
+ */
+function vaccineDefForDoseName(rawName: string): VaccineDef | null {
+  const catalogDef = findVaccineByName(rawName);
+  if (catalogDef) return catalogDef;
+  return isRabiesVaccineName(rawName) ? findVaccineByName(RABIES_VACCINE_NAME) : null;
+}
+
+/**
+ * THE next-due date of one recorded dose, and where it came from — the one
+ * derivation the libreta back (computeVaccinationSummary) and the asiento's
+ * "Vence" line both read. They used to disagree on the same owner-declared
+ * rabies dose: the back computed a date from the catalog interval and said
+ * "Vigente", while the asiento read only `payload.next_due_at` and said
+ * "Vence: Sin dato" (QA v14 P2a, 2026-10-07).
+ *
+ *   • "payload" — the asiento carries `next_due_at` (normally vet-written).
+ *   • "derived" — computed from the catalog's `intervalMonths`: a SUGGESTION.
+ */
+export function doseNextDue(
+  rawName: string | null,
+  occurredAt: Date | string,
+  payload: unknown,
+): { nextDueAt: Date | null; dueSource: "payload" | "derived" | undefined } {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  const payloadNextDue = parseExplicitNextDue(p.next_due_at);
+  if (payloadNextDue) return { nextDueAt: payloadNextDue, dueSource: "payload" };
+  const def = rawName ? vaccineDefForDoseName(rawName) : null;
+  const applied = asDate(occurredAt);
+  const derived =
+    def && applied && def.intervalMonths !== null
+      ? derivedDueDate(applied, def.intervalMonths)
+      : null;
+  return derived
+    ? { nextDueAt: derived, dueSource: "derived" }
+    : { nextDueAt: null, dueSource: undefined };
+}
+
+/**
+ * Who stands behind a dose, by `provenanceTier` — the SAME function the
+ * credential front's rabies card uses to decide "Declarada" (pet-compliance
+ * deriveRabies). Undefined when the event carries no author fields.
+ */
+export function doseProvenance(e: AnyEvent): DoseProvenance | undefined {
+  if (e.authorRole === undefined) return undefined;
+  const tier = provenanceTier({
+    authorRole: e.authorRole,
+    authorVerified: e.authorVerified ?? false,
+    authorOrganizationId: e.authorOrganizationId ?? null,
+    payload: (e.payload ?? {}) as Record<string, unknown>,
+  });
+  return tier === "declarado" ? "declarada" : "profesional";
 }
 
 /**
@@ -230,7 +313,12 @@ export function computeVaccinationSummary(
   // reads the rabies dose by).
   const latestByVaccine = new Map<
     string,
-    { occurredAt: Date; nextDueAt: Date | null; dueSource: "payload" | "derived" | undefined }
+    {
+      occurredAt: Date;
+      nextDueAt: Date | null;
+      dueSource: "payload" | "derived" | undefined;
+      provenance: DoseProvenance | undefined;
+    }
   >();
   // Distinct off-catalog (free-text) vaccine names, normalized for dedupe.
   // These don't change core-vaccine status but must stay visible — counting
@@ -250,8 +338,7 @@ export function computeVaccinationSummary(
     // Séxtuple/Quíntuple read "unconfirmed" rather than "never given" — the
     // dog plainly received SOMETHING besides rabies (PO 2026-07-28 rule below).
     const catalogDef = findVaccineByName(rawName);
-    const def =
-      catalogDef ?? (isRabiesVaccineName(rawName) ? findVaccineByName(RABIES_VACCINE_NAME) : null);
+    const def = vaccineDefForDoseName(rawName);
     if (def && !catalogDef && !isPlainRabiesVaccineName(rawName)) {
       const normalized = vaccineNameKey(rawName);
       if (normalized) otherNames.add(normalized);
@@ -266,18 +353,15 @@ export function computeVaccinationSummary(
     }
     const occurredAt = asDate(e.occurredAt);
     if (!occurredAt) continue;
-    const payloadNextDue = parseExplicitNextDue(payload.next_due_at);
-    const catalogNextDue =
-      def.intervalMonths !== null ? derivedDueDate(occurredAt, def.intervalMonths) : null;
-    const nextDue = payloadNextDue ?? catalogNextDue;
-    const dueSource: "payload" | "derived" | undefined = payloadNextDue
-      ? "payload"
-      : catalogNextDue
-        ? "derived"
-        : undefined;
+    const { nextDueAt: nextDue, dueSource } = doseNextDue(rawName, occurredAt, payload);
     const existing = latestByVaccine.get(def.name);
     if (!existing || existing.occurredAt < occurredAt) {
-      latestByVaccine.set(def.name, { occurredAt, nextDueAt: nextDue, dueSource });
+      latestByVaccine.set(def.name, {
+        occurredAt,
+        nextDueAt: nextDue,
+        dueSource,
+        provenance: doseProvenance(e),
+      });
     }
   }
 
@@ -367,6 +451,7 @@ export function computeVaccinationSummary(
         lastDoseAt: latest.occurredAt,
         nextDueAt: null,
         status: "active",
+        provenance: latest.provenance,
       });
       return;
     }
@@ -381,6 +466,7 @@ export function computeVaccinationSummary(
       nextDueAt,
       status,
       dueSource: latest.dueSource,
+      provenance: latest.provenance,
     });
   });
   flushPendingUpTo(Number.POSITIVE_INFINITY);
@@ -390,7 +476,9 @@ export function computeVaccinationSummary(
   let expired = 0;
   let missing = 0;
   let unconfirmed = 0;
+  let declared = 0;
   for (const v of perVaccine) {
+    if (v.status === "active" && v.provenance === "declarada") declared++;
     if (v.status === "active") active++;
     else if (v.status === "due_soon") dueSoon++;
     else if (v.status === "expired") expired++;
@@ -404,6 +492,7 @@ export function computeVaccinationSummary(
     expired,
     missing,
     unconfirmed,
+    declared,
     otherCount: otherNames.size,
     perVaccine,
     hasReferenceCalendar: calendar !== null,

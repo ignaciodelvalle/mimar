@@ -35,14 +35,17 @@ export function deriveVacunasBadgeCounts(summary: VaccinationSummary): {
   hasRecords: boolean;
 } {
   return {
-    vigente: summary.active,
+    // A current dose nobody professional signed counts with "Sin confirmar",
+    // not "Vigente": the credential front calls the same dose "Declarada" and
+    // the asiento says "Falta verificación profesional" (QA v14 P2a).
+    vigente: summary.active - summary.declared,
     porVencer: summary.dueSoon,
     vencida: summary.expired,
     // `missing` only — `unconfirmed` is deliberately NOT counted here. A core
     // vaccine we cannot match, on an animal carrying a dose we cannot identify,
     // is not an animal we can tell its owner is unvaccinated (PO 2026-07-28).
     sinAplicar: summary.missing,
-    sinConfirmar: summary.unconfirmed,
+    sinConfirmar: summary.unconfirmed + summary.declared,
     hasRecords: hasAnyVaccineRecord(summary),
   };
 }
@@ -72,6 +75,11 @@ export function isSuggestedLapse(v: VaccineSnapshot): boolean {
   return v.status === "expired" && v.dueSource === "derived" && v.nextDueAt !== null;
 }
 
+/** A current dose nobody professional signed — the front's "Declarada". */
+export function isDeclaredCurrent(v: VaccineSnapshot): boolean {
+  return v.status === "active" && v.provenance === "declarada";
+}
+
 export function metaFor(v: VaccineSnapshot): string {
   switch (v.status) {
     case "missing":
@@ -79,6 +87,11 @@ export function metaFor(v: VaccineSnapshot): string {
     case "unconfirmed":
       return "Sin confirmar — hay una dosis registrada que no pudimos identificar";
     case "active":
+      if (isDeclaredCurrent(v)) {
+        return v.nextDueAt && v.dueSource === "derived"
+          ? `Declarada · refuerzo sugerido ${fmtDate(v.nextDueAt)}`
+          : "Declarada — falta verificación profesional";
+      }
       return v.nextDueAt ? `Próxima ${fmtDate(v.nextDueAt)}` : "Al día";
     case "due_soon":
       return v.nextDueAt ? `Vence ${fmtDate(v.nextDueAt)}` : "Por vencer";
@@ -111,7 +124,7 @@ export function VacunasStatusBadges({ summary }: { summary: VaccinationSummary }
       // that panel for an owner-declared dose (QA round 2 2026-07-03 finding A).
       label: "Vigente",
       count: counts.vigente,
-      items: summary.perVaccine.filter((v) => v.status === "active"),
+      items: summary.perVaccine.filter((v) => v.status === "active" && !isDeclaredCurrent(v)),
       bg: "var(--color-ln-ok-050)",
       border: "var(--color-ln-ok-100)",
       text: "var(--color-ln-ok)",
@@ -154,7 +167,7 @@ export function VacunasStatusBadges({ summary }: { summary: VaccinationSummary }
       key: "sin-confirmar",
       label: "Sin confirmar",
       count: counts.sinConfirmar,
-      items: summary.perVaccine.filter((v) => v.status === "unconfirmed"),
+      items: summary.perVaccine.filter((v) => v.status === "unconfirmed" || isDeclaredCurrent(v)),
       bg: "var(--color-ln-paper-2)",
       // Was --color-ln-rule, which is declared nowhere and therefore drew no
       // border at all. ln-line IS the warm hairline this wanted.

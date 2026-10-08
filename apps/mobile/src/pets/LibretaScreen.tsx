@@ -56,7 +56,8 @@ import {
   upcomingDueLabel,
   upcomingRemainingLabel,
   upcomingRowLabel,
-  vaccineStatusLabel,
+  vaccineCounts,
+  vaccineRowLabel,
 } from "./libreta-view-model";
 import type { SectionView } from "./owner-face-view-model";
 
@@ -237,7 +238,7 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
                 <Row
                   key={vaccine.vaccineName}
                   label={vaccine.vaccineName}
-                  value={vaccineStatusLabel(vaccine.status)}
+                  value={vaccineRowLabel(vaccine)}
                 />
               ))
             )}
@@ -353,6 +354,7 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
  * nothing.
  */
 function VaccineCounts({ vaccination }: { vaccination: LibretaVaccinationSection }) {
+  const counts = vaccineCounts(vaccination);
   const cells: Array<{
     label: string;
     count: number;
@@ -362,28 +364,28 @@ function VaccineCounts({ vaccination }: { vaccination: LibretaVaccinationSection
   }> = [
     {
       label: "Vigente",
-      count: vaccination.active,
+      count: counts.vigente,
       ink: COLORS.okInk,
       surface: COLORS.okSurface,
       border: COLORS.okBorder,
     },
     {
       label: "Por vencer",
-      count: vaccination.dueSoon,
+      count: counts.porVencer,
       ink: COLORS.warnInk,
       surface: COLORS.warnSurface,
       border: COLORS.warnBorder,
     },
     {
       label: "Vencida",
-      count: vaccination.expired,
+      count: counts.vencida,
       ink: COLORS.danger,
       surface: COLORS.dangerSurface,
       border: COLORS.dangerBorder,
     },
     {
       label: "Sin confirmar",
-      count: vaccination.unconfirmed,
+      count: counts.sinConfirmar,
       ink: COLORS.inkSoft,
       surface: COLORS.canvas2,
       border: COLORS.border,

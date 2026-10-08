@@ -22,6 +22,7 @@
 // reader), never from the author's role — see ownerDeclaredSubject.
 
 import type { EventType } from "@/db/schema";
+import { doseNextDue } from "@/lib/domain/libreta-health-status";
 import {
   INTAKE_CONDITION_LABELS,
   INTAKE_HYDRATION_LABELS,
@@ -566,9 +567,18 @@ export function toAsientoView(
       // Signer-derived fallback — must never contradict the provenance stamp
       // (see applierAttribution docblock).
       const aplico = applierAttribution(row, administeredBy);
+      // THE next-due derivation the libreta back reads (doseNextDue): a dose
+      // with no written date shows the catalog-interval date as what it is — a
+      // suggestion, "Refuerzo sugerido", the front's own words — instead of
+      // "Vence: Sin dato" beside a back that said "Vigente" (QA v14 P2a).
+      const due = doseNextDue(name, row.occurredAt, p);
       const facts: AsientoFact[] = [
         { key: "Aplicada", value: aplicada },
-        fact("Vence", dateStr(p, "next_due_at"), "Sin dato"),
+        fact(
+          due.dueSource === "derived" ? "Refuerzo sugerido" : "Vence",
+          due.nextDueAt ? formatAbsolute(due.nextDueAt) : null,
+          "Sin dato",
+        ),
         fact("Vía", str(p, "route"), "Sin dato"),
         {
           key: "Aplicó",
