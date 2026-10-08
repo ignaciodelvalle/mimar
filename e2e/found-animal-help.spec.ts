@@ -1,5 +1,6 @@
 import { type Page, expect, test } from "@playwright/test";
 
+import { resolveStagingUrl } from "./_base-url";
 import { PALERMO_POINT, placePointByAddress, uniqueIp } from "./demo/_helpers";
 
 /**
@@ -16,7 +17,18 @@ import { PALERMO_POINT, placePointByAddress, uniqueIp } from "./demo/_helpers";
  * only one the bootstrap tier guarantees). Each walk uses its own contact, so
  * the action's 5-minute idempotency guard never folds one into the other, and
  * its own `x-real-ip`, so the 1/min per-(IP, token) budget is not shared.
+ *
+ * LOCAL TARGET ONLY for the walks that WRITE or need the P4 fixtures: against
+ * a deployed origin (the nightly staging pass picks up every spec here) the
+ * edge overwrites `x-real-ip`, so two walks a minute apart from one egress
+ * address trip the per-(IP, token) budget, they would file real finder reports
+ * on a real lost pet, and the fixtures exist only where this seed ran. The
+ * skip branches on the ENVIRONMENT, never on the data (e2e/README.md). The
+ * page's structure and its two entry points are checked everywhere.
  */
+const LOCAL_ONLY_REASON =
+  "Writes finder reports and needs the P4 seed fixtures — local target only (STAGING_URL is set).";
+const ON_STAGING = resolveStagingUrl() !== null;
 
 const RECEIVER = "Refugio Receptor Palermo";
 const VET = "Veterinaria Palermo";
@@ -52,6 +64,7 @@ async function reportFinderInPossession(
 }
 
 test.describe("plan B after 'La tengo conmigo'", () => {
+  test.skip(ON_STAGING, LOCAL_ONLY_REASON);
   test("the confirmation shows the receiving organizations BELOW 'Ya le avisamos'", async ({
     page,
   }) => {
@@ -120,6 +133,11 @@ test.describe("/encontre-un-animal", () => {
         chipBox.y < perdidasBox.y &&
         perdidasBox.y < receiversBox.y,
     ).toBe(true);
+
+    if (ON_STAGING) {
+      test.info().annotations.push({ type: "skip-part", description: LOCAL_ONLY_REASON });
+      return;
+    }
 
     // The place is a catalogue locality, picked — never the device's location.
     const input = page.locator("#lugar-encontrado-input");
