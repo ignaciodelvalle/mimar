@@ -1,32 +1,39 @@
 #!/usr/bin/env tsx
 /**
  * The coordinate pass over HOMONYM event_places rows — plan maestro A2,
- * 2026-10-07. DRY RUN ONLY: it counts, it never writes.
+ * 2026-10-07. Dry run by default; --apply writes.
  *
  * The name pass (place:resolve-event-places-by-name) leaves a row unresolved
  * when its name matches more than one live locality of the province (7
  * Córdoba pairs on staging, plus others). This pass asks whether the row's
  * own event carries coordinates that sit clearly next to ONE of the
- * candidates' centroids, and reports, per pair, how many rows that would
- * settle and why the rest stay unresolved (no coordinates, a candidate with
- * no centroid, a point outside every candidate, or two candidates too close
- * to call). It never picks a winner otherwise. The logic and the thresholds
- * are lib/place/event-places-coordinate-pass.ts.
- *
- * There is no --apply: event_places' method CHECK (0250) has no value for "a
- * homonym settled by the event's coordinates", and that value is a decision
- * to take before any row is written.
+ * candidates' centroids, and reports, per pair, how many rows that settles
+ * and why the rest stay unresolved (no coordinates, a candidate with no
+ * centroid, a point outside every candidate, or two candidates too close to
+ * call). It never picks a winner otherwise. The logic and the thresholds are
+ * lib/place/event-places-coordinate-pass.ts.
  *
  *   pnpm place:resolve-event-places-by-coordinates
- *       against the LOCAL database (DATABASE_URL from .env.local, or the
- *       Supabase CLI default). The pass's own reads (event_places with the
+ *       dry run against the LOCAL database (DATABASE_URL from .env.local, or
+ *       the Supabase CLI default). The pass's own reads (event_places with the
  *       events' points, the candidates' centroids) each run in a short READ
  *       ONLY transaction. The homonym lookup does NOT: resolveName ->
  *       localitiesByName queries through the global pool, as plain SELECTs
- *       outside any transaction. Nothing in this script issues a write.
+ *       outside any transaction. Nothing in a dry run issues a write.
+ *   ... --apply
+ *       writes ONLY the rows the dry run marks resolved, and ONLY the
+ *       spine-shaped ones (the name pass's rule), with method
+ *       `homonym_by_coordinates` (migration 0291) and one place_resolutions
+ *       row each, APPLY_BATCH rows per transaction. Idempotent: a settled row
+ *       is no longer unresolved, so a re-run neither sees nor writes it.
+ *       Prints the per-pair counts before and after.
  *   ... --env-file <path> --allow-remote
  *       against another database, on purpose. A non-local host is refused
- *       without --allow-remote. NOT against staging until the PO asks for it.
+ *       without --allow-remote, in both modes. NOT against staging until the
+ *       PO asks for it.
+ *
+ * RE-RUN IT AFTER EVERY PROJECTION REBUILD, after the name pass: a rebuild
+ * brings these rows back as unresolved.
  *
  * Prints the host and project ref, never a credential.
  */
@@ -35,7 +42,11 @@ import { existsSync } from "node:fs";
 
 import { config as loadEnv } from "dotenv";
 
-import type { CoordinatePassInventory } from "@/lib/place/event-places-coordinate-pass";
+import type {
+  CoordinateApplyResult,
+  CoordinatePassInventory,
+  ReadRunner,
+} from "@/lib/place/event-places-coordinate-pass";
 
 import { DEFAULT_LOCAL_URL, describeTarget, remoteSkipReason } from "./_db-target";
 
@@ -57,11 +68,12 @@ export function refusal(
   allowRemote: boolean,
   argv: readonly string[],
 ): string | null {
-  if (argv.includes("--apply")) {
-    return "there is no --apply: this pass is a dry run until the method value is decided";
+  if (argv.includes("--apply") && argv.includes("--dry-run")) {
+    return "--apply and --dry-run are exclusive";
   }
   const reason = remoteSkipReason(describeTarget(rawUrl), allowRemote);
-  return reason === null ? null : `${reason} Pass --allow-remote to read it on purpose.`;
+  const verb = argv.includes("--apply") ? "write" : "read";
+  return reason === null ? null : `${reason} Pass --allow-remote to ${verb} it on purpose.`;
 }
 
 async function main(): Promise<void> {
@@ -75,20 +87,37 @@ async function main(): Promise<void> {
   process.env.DATABASE_URL ??= DEFAULT_LOCAL_URL;
   const rawUrl = process.env.DATABASE_URL;
   const target = describeTarget(rawUrl);
-  console.log(`[${LABEL}] database ${target.label}; mode: dry run (zero writes)`);
+  const apply = process.argv.includes("--apply");
+  console.log(
+    `[${LABEL}] database ${target.label}; mode: ${apply ? "APPLY" : "dry run (zero writes)"}`,
+  );
   const refused = refusal(rawUrl, process.argv.includes("--allow-remote"), process.argv);
   if (refused) fail(`refusing: ${refused}`);
 
   // The database modules load only now, after the env is settled.
   const { db } = await import("@/db");
-  const { inventoryCoordinatePass } = await import("@/lib/place/event-places-coordinate-pass");
-  const inv = await inventoryCoordinatePass(
-    db,
-    {},
-    { run: (read) => db.transaction((tx) => read(tx), { accessMode: "read only" }) },
-  );
+  const { inventoryCoordinatePass, applyCoordinatePass, coordinateTargets, APPLY_BATCH } =
+    await import("@/lib/place/event-places-coordinate-pass");
+  const readOnly: { run: ReadRunner } = {
+    run: (read) => db.transaction((tx) => read(tx), { accessMode: "read only" }),
+  };
+  const inv = await inventoryCoordinatePass(db, {}, readOnly);
   printInventory(inv);
-  console.log(`\n[${LABEL}] dry run: nothing written.`);
+  if (!apply) {
+    console.log(`\n[${LABEL}] dry run: nothing written.`);
+    return;
+  }
+
+  const targets = coordinateTargets(inv);
+  console.log(
+    `\n[${LABEL}] applying ${targets.length} row(s) in transactions of ${APPLY_BATCH} rows...`,
+  );
+  const res = await applyCoordinatePass(db, targets);
+  console.log(
+    `  done: ${res.batches} batches; updated ${res.updated}; skipped (no longer unresolved, moved province, or a candidate gone) ${res.skipped}`,
+  );
+  const after = await inventoryCoordinatePass(db, {}, readOnly);
+  printBeforeAfter(inv, after, res);
 }
 
 function km(n: number | null): string {
@@ -127,6 +156,28 @@ export function printInventory(inv: CoordinatePassInventory, log = console.log):
       log(`    ${d.eventId}  ${km(d.decision.nearestKm)} / ${km(d.decision.runnerUpKm)}`);
     }
   }
+}
+
+/** Per pair: unresolved rows and spine rows the pass settles, before and after an apply. */
+export function printBeforeAfter(
+  before: CoordinatePassInventory,
+  after: CoordinatePassInventory,
+  res: Pick<CoordinateApplyResult, "updatedByPair">,
+  log = console.log,
+): void {
+  const key = (p: { provinceCode: string; locality: string }) =>
+    `${p.provinceCode}\u0000${p.locality}`;
+  const afterByKey = new Map(after.pairs.map((p) => [key(p), p] as const));
+  log("\nper pair, before -> after (unresolved rows; of them settled-and-writable):");
+  for (const p of before.pairs) {
+    const a = afterByKey.get(key(p));
+    log(
+      `  ${p.provinceCode} / ${p.locality}: ${p.rows} -> ${a?.rows ?? 0} unresolved; writable ${p.resolvedWritableRows} -> ${a?.resolvedWritableRows ?? 0}; written ${res.updatedByPair[key(p)] ?? 0}`,
+    );
+  }
+  log(
+    `  total: ${before.homonymRows} -> ${after.homonymRows} unresolved homonym rows; writable ${before.totals.resolvedWritable} -> ${after.totals.resolvedWritable}`,
+  );
 }
 
 if (process.argv[1]?.endsWith("place-resolve-event-places-by-coordinates.ts")) {

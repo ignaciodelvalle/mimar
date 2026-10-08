@@ -9,6 +9,8 @@ import {
   MAX_DISTANCE_KM,
   MIN_MARGIN_KM,
   MIN_RATIO,
+  auditReason,
+  coordinateTargets,
   decideByCoordinates,
   haversineKm,
   usablePoint,
@@ -145,6 +147,77 @@ describe("decideByCoordinates — settles a homonym only on clear evidence", () 
   });
 });
 
+describe("coordinateTargets — what an apply may write", () => {
+  const key = "AR-X\u0000San José";
+  const pair = {
+    provinceCode: "AR-X",
+    locality: "San José",
+    candidates: [NORTH, SOUTH],
+    rows: 4,
+    writableRows: 3,
+    resolvedRows: 2,
+    resolvedWritableRows: 1,
+    byReason: { no_coords: 1, candidate_without_centroid: 0, outside_all: 0, too_close_to_call: 1 },
+    chosen: { [NORTH.localityId]: 2 },
+  };
+  const resolved = {
+    verdict: "resolved",
+    localityId: NORTH.localityId,
+    distanceKm: 2,
+    runnerUpKm: 150,
+  } as const;
+
+  it("keeps ONLY the resolved decisions on spine-shaped rows", () => {
+    const targets = coordinateTargets({
+      pairs: [pair],
+      decisions: [
+        { eventId: "e-spine", spine: true, pairKey: key, decision: resolved },
+        { eventId: "e-trigger", spine: false, pairKey: key, decision: resolved },
+        {
+          eventId: "e-close",
+          spine: true,
+          pairKey: key,
+          decision: {
+            verdict: "unresolved",
+            reason: "too_close_to_call",
+            nearestKm: 1,
+            runnerUpKm: 2,
+          },
+        },
+        {
+          eventId: "e-nopoint",
+          spine: true,
+          pairKey: key,
+          decision: {
+            verdict: "unresolved",
+            reason: "no_coords",
+            nearestKm: null,
+            runnerUpKm: null,
+          },
+        },
+      ],
+    });
+    expect(targets).toEqual([
+      {
+        eventId: "e-spine",
+        pairKey: key,
+        provinceCode: "AR-X",
+        localityId: NORTH.localityId,
+        candidateIds: [NORTH.localityId, SOUTH.localityId],
+        distanceKm: 2,
+        runnerUpKm: 150,
+      },
+    ]);
+  });
+
+  it("writes an audit reason with both distances, inside 0250's 1000-char CHECK", () => {
+    const reason = auditReason({ distanceKm: 1.234, runnerUpKm: 197.06 });
+    expect(reason).toContain("1.2 km");
+    expect(reason).toContain("197.1 km");
+    expect(reason.length).toBeLessThanOrEqual(1000);
+  });
+});
+
 describe("the operator script's guard", () => {
   const LOCAL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
   const REMOTE =
@@ -159,7 +232,16 @@ describe("the operator script's guard", () => {
     expect(refusal(REMOTE, true, ["--allow-remote"])).toBeNull();
   });
 
-  it("has no apply mode, whatever the target", () => {
-    expect(refusal(LOCAL, false, ["--apply"])).toContain("dry run");
+  it("applies to the local database without a flag", () => {
+    expect(refusal(LOCAL, false, ["--apply"])).toBeNull();
+  });
+
+  it("refuses to WRITE a remote database unless --allow-remote is typed", () => {
+    expect(refusal(REMOTE, false, ["--apply"])).toContain("--allow-remote to write");
+    expect(refusal(REMOTE, true, ["--apply", "--allow-remote"])).toBeNull();
+  });
+
+  it("refuses --apply together with --dry-run", () => {
+    expect(refusal(LOCAL, false, ["--apply", "--dry-run"])).toContain("exclusive");
   });
 });
