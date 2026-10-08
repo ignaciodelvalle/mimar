@@ -7,10 +7,10 @@
 // config-theater audit). Mirrors the cartel page's structure: server-side QR
 // SVG + a client preview with window.print, print CSS in real millimetres.
 
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 
+import { LnButton } from "@/components/ui/Button";
 import { requirePetAccess } from "@/lib/infra/pet-access";
 import { resolvePhysicalCredentialChannels } from "@/lib/infra/physical-credential-channels";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
@@ -44,12 +44,13 @@ export default async function ChapitaPage({
         <p className="mt-1.5 text-md text-[var(--color-ln-mute)]">
           Consultá los canales disponibles para conseguir la chapita de {pet.name}.
         </p>
-        <Link
+        <LnButton
           href={`/mis-mascotas/${publicToken}?sheet=chapita`}
-          className="mt-5 inline-flex items-center rounded-[var(--radius-op-btn)] border border-[var(--color-ln-line)] bg-[var(--color-ln-card)] px-4 py-2 text-md font-medium text-[var(--color-ln-ink)] no-underline transition-opacity hover:opacity-80"
+          variant="ghost"
+          className="mt-5"
         >
           Ver canales disponibles
-        </Link>
+        </LnButton>
       </div>
     );
   }

@@ -3,6 +3,8 @@
 // On-screen preview + print control for the self-print chapita sheet.
 // Mirrors PosterPreview's client pattern (window.print, no state beyond UI).
 
+import { LnButton } from "@/components/ui/Button";
+
 type Props = {
   petName: string;
   publicToken: string;
@@ -35,13 +37,11 @@ export function ChapitaSheet({ petName, publicToken, qrSvg }: Props) {
             plastificalo o metelo en un portachapita.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="rounded-[var(--radius-op-btn)] bg-[var(--color-ln-azul)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--color-ln-azul-700)]"
-        >
+        {/* The citizen kit's button, not a hand-built one: this is an owner
+            page, and the operator tier's radius belongs to /gob and /admin. */}
+        <LnButton variant="primary" size="lg" onClick={() => window.print()}>
           Imprimir
-        </button>
+        </LnButton>
       </div>
 
       <div className="chapita-sheet rounded-[var(--radius-input)] border border-[var(--color-ln-line)] bg-white p-8 shadow-sm">
