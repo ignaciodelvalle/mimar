@@ -29,7 +29,8 @@
 // server answers 404, i.e. "no existe esa mascota", which is a lie about the
 // pet rather than about the link. Better to say the link is broken.
 
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useNavigation } from "expo-router";
+import { useCallback } from "react";
 
 import { useGate } from "../../src/auth/useGate";
 import { type DocumentFace, isDocumentFace } from "../../src/pets/DocumentChromeNative";
@@ -40,6 +41,16 @@ import { DOCUMENT_FACE_PARAM } from "../../src/ui/routes";
 
 export default function PetDetailRoute() {
   const gate = useGate();
+  const navigation = useNavigation();
+  // THE HEADER NAMES THE ANIMAL once the document has read it. `_layout.tsx`
+  // registers "Mascota" because the header is drawn before any fetch; that is
+  // the fallback for the first frames and for a read that failed, not the
+  // title — a person with three animals should not have to read the card to
+  // know whose document is open.
+  const showPetName = useCallback(
+    (name: string) => navigation.setOptions({ title: name }),
+    [navigation],
+  );
   const params = useLocalSearchParams<{
     publicToken?: string | string[];
     [DOCUMENT_FACE_PARAM]?: string | string[];
@@ -68,5 +79,11 @@ export default function PetDetailRoute() {
   const face = (Array.isArray(rawFace) ? rawFace[0] : rawFace)?.trim() ?? "";
   const initialFace: DocumentFace = isDocumentFace(face) ? face : "credencial";
 
-  return <PetDocumentScreen publicToken={publicToken} initialFace={initialFace} />;
+  return (
+    <PetDocumentScreen
+      publicToken={publicToken}
+      initialFace={initialFace}
+      onPetName={showPetName}
+    />
+  );
 }

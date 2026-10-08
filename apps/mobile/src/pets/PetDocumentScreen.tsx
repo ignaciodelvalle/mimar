@@ -45,7 +45,7 @@
 
 import type { FormerOwnerPetReadV1, OwnerPetSituationV1 } from "@dim/contract/api";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, StyleSheet, Text, View } from "react-native";
 
 import { apiFailureMessage } from "../api/client";
@@ -86,8 +86,15 @@ function situationOf(view: OwnerFaceView | null): OwnerPetSituationV1 | null {
 export function PetDocumentScreen({
   publicToken,
   initialFace = "credencial",
+  onPetName,
 }: {
   publicToken: string;
+  /**
+   * Told the animal's name once the document has read it, so the route can put
+   * it in the stack header instead of the generic "Mascota". Not called while
+   * the identity is unread — the header keeps its fallback rather than a guess.
+   */
+  onPetName?: (name: string) => void;
   /**
    * Which face the document opens on. Defaults to the credential — that is what
    * a person navigating to an animal expects to see, and every caller but one
@@ -270,6 +277,11 @@ export function PetDocumentScreen({
 
   const view = owner.phase === "ready" ? owner.view : null;
   const panel = useMemo(() => (view === null ? null : ownerPanelView(view)), [view]);
+
+  const petName = view?.identity.state === "ok" ? view.identity.data.name : null;
+  useEffect(() => {
+    if (petName !== null && petName.trim() !== "") onPetName?.(petName);
+  }, [petName, onPetName]);
 
   if (former !== null) {
     return (

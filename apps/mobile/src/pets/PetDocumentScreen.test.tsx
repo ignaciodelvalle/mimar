@@ -318,6 +318,27 @@ async function refocus(): Promise<void> {
   });
 }
 
+describe("PetDocumentScreen — the header learns the animal's name", () => {
+  it("reports the name once the identity is read, for the route to put in the header", async () => {
+    const onPetName = jest.fn();
+    render(<PetDocumentScreen publicToken={TOKEN} onPetName={onPetName} />);
+    await screen.findByText("Pampa");
+    expect(onPetName).toHaveBeenCalledWith("Pampa");
+  });
+
+  it("reports nothing when the identity did not load — the header keeps 'Mascota'", async () => {
+    mockFetchOwnerPetDetail.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ identity: UNAVAILABLE }),
+    });
+    const onPetName = jest.fn();
+    render(<PetDocumentScreen publicToken={TOKEN} onPetName={onPetName} />);
+    // The rest of the document arrived: the read is done, not still in flight.
+    await screen.findByText("Cumplimiento");
+    expect(onPetName).not.toHaveBeenCalled();
+  });
+});
+
 describe("PetDocumentScreen — two faces of one document", () => {
   it("opens on Credencial · frente, with the animal on it", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
