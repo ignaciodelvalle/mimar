@@ -195,7 +195,8 @@ export function ServiceDogScreen({ publicToken }: { publicToken: string }) {
       onDraft={setDraft}
       locked={locked}
       busy={busy}
-      tone={hasStateAct ? "secondary" : "primary"}
+      // Never a second primary beside the retire confirmation either.
+      tone={hasStateAct || confirmRetire ? "secondary" : "primary"}
       onSave={save}
     />
   );
@@ -330,6 +331,12 @@ function DesignationActions({
           disabled={busy}
           onPress={() => onRun({ command: "request_service_dog_verification" })}
         />
+      ) : null}
+      {/* The old button's accessibilityHint, now said to everyone: the kit's
+          PrimaryButton takes no hint, and what the act does matters to a
+          sighted reader too. */}
+      {actions.canRequestVerification ? (
+        <Body>Envía los datos a la autoridad para que valide la credencial.</Body>
       ) : null}
       {actions.canToggleVisibility && !bannerOn ? (
         <PrimaryButton
